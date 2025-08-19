@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Вход</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/">Главная</a>
+    <a href="/chats" class="chats-link">
+      Чаты
+      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
+        <span class="badge"><%= unreadCount %></span>
+      <% } %>
+    </a>
+    <span class="navbar-right">
+      <a href="/login">Вход</a>
+      <a href="/register">Регистрация</a>
+    </span>
+  </nav>
+  <div class="container">
+    <h1>Вход</h1>
+    <form method="POST" action="/login">
+      <label>Логин:<br><input type="text" name="username" required></label><br><br>
+      <label>Пароль:<br><input type="password" name="password" required></label><br><br>
+      <button type="submit">Войти</button>
+    </form>
+    <p>Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
+  </div>
+</body>
+</html> 

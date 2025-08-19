@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Редактировать объявление</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/">Главная</a>
+    <a href="/profile">Личный кабинет</a>
+    <a href="/listings/new">Новое объявление</a>
+    <a href="/chats" class="chats-link">
+      Чаты
+      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
+        <span class="badge"><%= unreadCount %></span>
+      <% } %>
+    </a>
+    <span class="navbar-right">
+      <a href="/logout">Выйти</a>
+    </span>
+  </nav>
+  <div class="container">
+    <h1>Редактировать объявление</h1>
+    <form method="POST" action="/listings/<%= listing.id %>/edit" enctype="multipart/form-data">
+      <label>Заголовок:<br><input type="text" name="title" value="<%= listing.title %>" required></label><br><br>
+      <label>Описание:<br><textarea name="description" required><%= listing.description %></textarea></label><br><br>
+      <label>Цена:<br><input type="number" name="price" step="0.01" value="<%= listing.price %>" required></label><br><br>
+      <label>Адрес:<br><input type="text" name="address" value="<%= listing.address %>" required></label><br><br>
+      <% if (listing.photo) { %>
+        <div style="margin-bottom:12px;"><img src="/images/<%= listing.photo %>" alt="Фото" style="max-width:200px;"></div>
+      <% } %>
+      <label>Фото:<br><input type="file" name="photo" accept="image/*"></label><br><br>
+      <button type="submit">Сохранить</button>
+    </form>
+    <p><a href="/listings/<%= listing.id %>">Назад к объявлению</a></p>
+  </div>
+</body>
+</html> 

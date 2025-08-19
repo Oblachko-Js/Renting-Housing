@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Личный кабинет</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/">Главная</a>
+    <a href="/profile">Личный кабинет</a>
+    <% if (user.role === 'landlord') { %>
+      <a href="/listings/new">Новое объявление</a>
+    <% } %>
+    <a href="/chats" class="chats-link">
+      Чаты
+      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
+        <span class="badge"><%= unreadCount %></span>
+      <% } %>
+    </a>
+    <span class="navbar-right">
+      <a href="/logout">Выйти</a>
+    </span>
+  </nav>
+  <div class="container">
+    <h1>Личный кабинет</h1>
+    <p><strong>Логин:</strong> <%= user.username %></p>
+    <p><strong>Роль:</strong> <%= user.role === 'landlord' ? 'Арендодатель' : 'Арендатор' %></p>
+    <% if (user.role === 'landlord') { %>
+      <h2>Мои объявления</h2>
+      <ul class="listing-list">
+        <% listings.forEach(function(listing) { %>
+          <li class="listing-item">
+            <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
+            <span><%= listing.price %> руб. — <%= listing.address %></span>
+          </li>
+        <% }) %>
+      </ul>
+      <a class="btn" href="/listings/new">+ Новое объявление</a>
+    <% } %>
+  </div>
+</body>
+</html> 

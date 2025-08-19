@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Чаты</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/">Главная</a>
+    <a href="/profile">Личный кабинет</a>
+    <% if (user && user.role === 'landlord') { %>
+      <a href="/listings/new">Новое объявление</a>
+    <% } %>
+    <a href="/chats" class="chats-link">
+      Чаты
+      <% if (unreadCount > 0) { %>
+        <span class="badge"><%= unreadCount %></span>
+      <% } %>
+    </a>
+    <span class="navbar-right">
+      <a href="/logout">Выйти</a>
+    </span>
+  </nav>
+  <div class="container">
+    <h1>Мои чаты</h1>
+    <% if (chats.length === 0) { %>
+      <p>У вас пока нет чатов.</p>
+    <% } else { %>
+      <ul class="chat-list">
+        <% chats.forEach(function(chat) { %>
+          <li class="chat-item<%= chat.unread > 0 ? ' chat-unread' : '' %>">
+            <a class="btn" href="/chats/<%= chat.id %>">
+              <%= chat.other_username %> — <%= chat.listing_title %>
+              <% if (chat.unread > 0) { %>
+                <span class="badge badge-small"><%= chat.unread %></span>
+              <% } %>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </div>
+</body>
+</html> 
