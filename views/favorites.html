@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Чаты</title>
+  <title>Избранное</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -25,28 +25,22 @@
     <% if (user && user.role === 'landlord') { %>
       <a href="/orders">Заказы</a>
     <% } %>
-    <span class="navbar-right">
-      <a href="/logout">Выйти</a>
-    </span>
+    <span class="navbar-right"><a href="/logout">Выйти</a></span>
   </nav>
   <div class="container">
-    <h1>Мои чаты</h1>
-    <% if (chats.length === 0) { %>
-      <p>У вас пока нет чатов.</p>
+    <h1>Избранные объявления</h1>
+    <% if (!listings || listings.length === 0) { %>
+      <p>У вас пока нет избранных объявлений.</p>
     <% } else { %>
-      <ul class="chat-list">
-        <% chats.forEach(function(chat) { %>
-          <li class="chat-item<%= chat.unread > 0 ? ' chat-unread' : '' %>">
-            <a class="btn" href="/chats/<%= chat.id %>">
-              <%= chat.other_username %> — <%= chat.listing_title %>
-              <% if (chat.unread > 0) { %>
-                <span class="badge badge-small"><%= chat.unread %></span>
-              <% } %>
-            </a>
+      <ul class="listing-list">
+        <% listings.forEach(function(listing) { %>
+          <li class="listing-item">
+            <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
+            <span><%= listing.price %> руб. — <%= listing.address %></span>
           </li>
         <% }) %>
       </ul>
     <% } %>
   </div>
 </body>
-</html> 
+</html>

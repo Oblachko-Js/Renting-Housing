@@ -18,14 +18,32 @@
         <span class="badge"><%= unreadCount %></span>
       <% } %>
     </a>
+    <a href="/favorites">Избранное</a>
+    <% if (user.role === 'tenant') { %>
+      <a href="/my-bookings">Мои бронирования</a>
+    <% } %>
+    <% if (user.role === 'landlord') { %>
+      <a href="/orders">Заказы</a>
+    <% } %>
     <span class="navbar-right">
       <a href="/logout">Выйти</a>
     </span>
   </nav>
   <div class="container">
     <h1>Личный кабинет</h1>
-    <p><strong>Логин:</strong> <%= user.username %></p>
+    <p><strong>Логин (email):</strong> <%= user.email || '—' %></p>
+    <p><strong>Отображаемое имя:</strong>
+      <span id="display-name-text"><%= user.display_name || '—' %></span>
+      <button id="edit-name-btn" class="btn" type="button" style="padding:4px 8px;margin-left:8px;">✏️</button>
+    </p>
+    <form id="display-name-form" method="POST" action="/profile/name" style="display:none;margin-bottom:16px;">
+      <input type="text" name="display_name" value="<%= user.display_name || '' %>" />
+      <button type="submit" class="btn">Сохранить</button>
+      <button type="button" id="cancel-name-btn" class="btn" style="background:#757575;">Отмена</button>
+    </form>
+
     <p><strong>Роль:</strong> <%= user.role === 'landlord' ? 'Арендодатель' : 'Арендатор' %></p>
+
     <% if (user.role === 'landlord') { %>
       <h2>Мои объявления</h2>
       <ul class="listing-list">
@@ -39,5 +57,23 @@
       <a class="btn" href="/listings/new">+ Новое объявление</a>
     <% } %>
   </div>
+  <script>
+    window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/main.js"></script>
+  <script>
+    const editBtn = document.getElementById('edit-name-btn');
+    const form = document.getElementById('display-name-form');
+    const cancelBtn = document.getElementById('cancel-name-btn');
+    editBtn.addEventListener('click', () => {
+      form.style.display = 'block';
+      editBtn.style.display = 'none';
+    });
+    cancelBtn.addEventListener('click', () => {
+      form.style.display = 'none';
+      editBtn.style.display = 'inline-block';
+    });
+  </script>
 </body>
 </html> 

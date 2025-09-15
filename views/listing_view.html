@@ -8,16 +8,25 @@
 <body>
   <nav class="navbar">
     <a href="/">Главная</a>
-    <a href="/profile">Личный кабинет</a>
-    <% if (user && user.role === 'landlord') { %>
-      <a href="/listings/new">Новое объявление</a>
-    <% } %>
-    <a href="/chats" class="chats-link">
-      Чаты
-      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
-        <span class="badge"><%= unreadCount %></span>
+    <% if (user) { %>
+      <a href="/profile">Личный кабинет</a>
+      <% if (user.role === 'landlord') { %>
+        <a href="/listings/new">Новое объявление</a>
       <% } %>
-    </a>
+      <a href="/chats" class="chats-link">
+        Чаты
+        <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
+          <span class="badge"><%= unreadCount %></span>
+        <% } %>
+      </a>
+      <a href="/favorites">Избранное</a>
+      <% if (user.role === 'tenant') { %>
+        <a href="/my-bookings">Мои бронирования</a>
+      <% } %>
+      <% if (user.role === 'landlord') { %>
+        <a href="/orders">Заказы</a>
+      <% } %>
+    <% } %>
     <% if (user) { %>
       <span class="navbar-right">
         <a href="/logout">Выйти</a>
@@ -30,14 +39,25 @@
     <% } %>
   </nav>
   <div class="container">
-    <h1><%= listing.title %></h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <h1 style="margin:0;"><%= listing.title %></h1>
+      <% if (user && user.id !== listing.owner_id) { %>
+        <form method="POST" action="/favorites/toggle" style="margin:0;">
+          <input type="hidden" name="listing_id" value="<%= listing.id %>">
+          <input type="hidden" name="redirect_to" value="/listings/<%= listing.id %>">
+          <button type="submit" class="heart-btn" title="Добавить в избранное" aria-label="Избранное">
+            <span class="heart <%= isFavorite ? 'active' : '' %>">❤</span>
+          </button>
+        </form>
+      <% } %>
+    </div>
     <% if (listing.photo) { %>
       <div style="margin-bottom:16px;"><img src="/images/<%= listing.photo %>" alt="Фото" style="max-width:350px;"></div>
     <% } %>
     <p><strong>Описание:</strong> <%= listing.description %></p>
     <p><strong>Цена:</strong> <%= listing.price %> руб.</p>
     <p><strong>Адрес:</strong> <%= listing.address %></p>
-    <p><strong>Владелец:</strong> <%= listing.owner_username %></p>
+    <p><strong>Владелец:</strong> <%= listing.owner_name %></p>
     <% if (typeof avg_rating !== 'undefined' && avg_rating) { %>
       <div style="font-size:1.2em;margin-bottom:8px;">Средний рейтинг: <b><%= avg_rating %></b> ★</div>
     <% } %>
@@ -47,7 +67,7 @@
         <ul style="list-style:none;padding:0;">
           <% reviews.forEach(function(r) { %>
             <li style="margin-bottom:12px;padding:10px 14px;background:#f7fafd;border-radius:8px;">
-              <b><%= r.username %></b> — <span style="color:#1976d2;font-weight:600;">★ <%= r.rating %></span>
+              <b><%= r.author_name %></b> — <span style="color:#1976d2;font-weight:600;">★ <%= r.rating %></span>
               <span style="color:#888;font-size:0.95em;">(<%= new Date(r.created_at).toLocaleDateString('ru-RU') %>)</span><br>
               <span><%= r.text %></span>
             </li>
@@ -77,6 +97,86 @@
         </form>
       </div>
     <% } %>
+    <% if (user && user.id !== listing.owner_id) { %>
+      <div class="calendar" id="calendar"></div>
+      <div class="legend">Зелёный — свободно, красный — занято</div>
+      <form id="booking-form" method="POST" action="/bookings/create" style="margin:16px 0;display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+        <input type="hidden" name="listing_id" value="<%= listing.id %>">
+        <label>Заезд:<br><input id="start-date" type="date" name="start_date" required></label>
+        <label>Выезд:<br><input id="end-date" type="date" name="end_date" required></label>
+        <button class="btn" type="submit">Забронировать</button>
+      </form>
+      <div id="busy-hint" style="color:#c62828;margin-bottom:8px;display:none;">Выбранные даты пересекаются с занятыми или некорректны</div>
+      <script>
+        (function(){
+          const listingId = <%= listing.id %>;
+          let busy = [];
+          function buildCalendar(root, date){
+            root.innerHTML = '';
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            const header = document.createElement('div');
+            header.className='cal-header';
+            const title = document.createElement('div');
+            title.textContent = date.toLocaleDateString('ru-RU',{month:'long', year:'numeric'});
+            const nav = document.createElement('div');
+            const prev = document.createElement('button'); prev.textContent='‹'; prev.className='btn'; prev.style.padding='4px 8px';
+            const next = document.createElement('button'); next.textContent='›'; next.className='btn'; next.style.padding='4px 8px';
+            nav.appendChild(prev); nav.appendChild(next);
+            header.appendChild(title); header.appendChild(nav);
+            const grid = document.createElement('div'); grid.className='cal-grid';
+            const dows = ['П','В','С','Ч','П','С','В'];
+            dows.forEach(x=>{ const el=document.createElement('div'); el.className='dow'; el.textContent=x; grid.appendChild(el); });
+            const first = new Date(year, month, 1);
+            const startIdx = (first.getDay()+6)%7;
+            for(let i=0;i<startIdx;i++){ const el=document.createElement('div'); el.className='day out'; el.textContent=''; grid.appendChild(el); }
+            const daysInMonth = new Date(year, month+1, 0).getDate();
+            for(let d=1; d<=daysInMonth; d++){
+              const cur = new Date(year, month, d);
+              const el = document.createElement('div'); el.className='day'; el.textContent=String(d);
+              const isBusy = busy.some(b => !(cur < b.s || cur > b.e));
+              el.classList.add(isBusy ? 'busy' : 'free');
+              grid.appendChild(el);
+            }
+            root.appendChild(header); root.appendChild(grid);
+            prev.onclick=()=>{ const nd=new Date(year,month-1,1); buildCalendar(root, nd); };
+            next.onclick=()=>{ const nd=new Date(year,month+1,1); buildCalendar(root, nd); };
+          }
+          fetch(`/listings/${listingId}/approved`).then(r=>r.json()).then(data => {
+            busy = data.map(d => ({ s: new Date(d.start_date), e: new Date(d.end_date) }));
+            const root = document.getElementById('calendar');
+            buildCalendar(root, new Date());
+          });
+
+          function overlap(s,e){ return busy.some(b => !(e < b.s || s > b.e)); }
+          const sEl = document.getElementById('start-date');
+          const eEl = document.getElementById('end-date');
+          const hint = document.getElementById('busy-hint');
+          function validate(){
+            if (!sEl.value || !eEl.value) { hint.style.display='none'; return; }
+            const s = new Date(sEl.value);
+            const e = new Date(eEl.value);
+            const invalidRange = s > e;
+            const hasOverlap = overlap(s,e);
+            hint.style.display = (invalidRange || hasOverlap) ? 'block' : 'none';
+          }
+          sEl.addEventListener('change', ()=>{ eEl.min = sEl.value; validate(); });
+          eEl.addEventListener('change', validate);
+          document.getElementById('booking-form').addEventListener('submit', (ev)=>{
+            const s = new Date(sEl.value); const e = new Date(eEl.value);
+            if (s > e) { ev.preventDefault(); alert('Дата выезда должна быть не раньше даты заезда'); return; }
+            if (overlap(s,e)) { ev.preventDefault(); alert('Выбранные даты заняты. Выберите другие.'); }
+          });
+
+          // Перемещаем блок отзывов ниже аренды, если нужно
+          const reviews = document.getElementById('reviews-section');
+          const form = document.getElementById('booking-form');
+          if (reviews && form && reviews.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING) {
+            form.parentNode.insertBefore(reviews, form.nextSibling);
+          }
+        })();
+      </script>
+    <% } %>
     <% if (typeof user !== 'undefined' && user && user.id !== listing.owner_id) { %>
       <form method="POST" action="/chats/start" style="margin-bottom:24px;">
         <input type="hidden" name="listing_id" value="<%= listing.id %>">
@@ -95,5 +195,10 @@
     <% } %>
     <p><a href="/">Назад к списку</a></p>
   </div>
+  <script>
+    window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/main.js"></script>
 </body>
 </html> 

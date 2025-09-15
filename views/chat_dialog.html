@@ -13,6 +13,13 @@
       <a href="/listings/new">Новое объявление</a>
     <% } %>
     <a href="/chats">Чаты</a>
+    <a href="/favorites">Избранное</a>
+    <% if (user && user.role === 'tenant') { %>
+      <a href="/my-bookings">Мои бронирования</a>
+    <% } %>
+    <% if (user && user.role === 'landlord') { %>
+      <a href="/orders">Заказы</a>
+    <% } %>
     <span class="navbar-right">
       <a href="/logout">Выйти</a>
     </span>
@@ -45,9 +52,53 @@
     </div>
   </div>
   <script>
-    // Прокрутка вниз при загрузке
-    const messages = document.getElementById('messages');
-    messages.scrollTop = messages.scrollHeight;
+    window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/main.js"></script>
+  <script>
+    const socket = window.APP_SOCKET || io();
+    const messagesEl = document.getElementById('messages');
+    const formEl = document.getElementById('form');
+    const inputEl = document.getElementById('input');
+    const chatId = <%= chat_id %>;
+    const senderId = <%= user.id %>;
+    const senderUsername = '<%= user.username %>';
+
+    socket.emit('identify', senderId);
+    socket.emit('join chat', chatId);
+
+    function appendBubble({ senderId: sid, senderUsername: su, text, timestamp }) {
+      const li = document.createElement('li');
+      const my = sid === senderId;
+      li.className = 'chat-bubble ' + (my ? 'my-message' : 'other-message');
+      li.innerHTML = `
+        <span class="avatar">${(su||'?')[0].toUpperCase()}</span>
+        <div class="bubble-content">
+          <div class="bubble-header">
+            <span class="msg-user">${su || ''}</span>
+            <span class="msg-time">${(timestamp||'').toString().slice(11,16)}</span>
+          </div>
+          <div class="bubble-text">${text}</div>
+        </div>`;
+      messagesEl.appendChild(li);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    socket.on('chat message', (payload) => {
+      if (payload && payload.senderId === senderId) return; // уже отрисовано оптимистически
+      appendBubble(payload);
+    });
+
+    formEl.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = (inputEl.value||'').trim();
+      if (!text) return;
+      // оптимистический рендер
+      appendBubble({ senderId, senderUsername, text, timestamp: new Date().toISOString() });
+      socket.emit('chat send', { chatId, text, senderId, senderUsername });
+      inputEl.value = '';
+    });
   </script>
 </body>
 </html> 

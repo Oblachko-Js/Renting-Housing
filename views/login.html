@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ру">
 <head>
   <meta charset="UTF-8">
   <title>Вход</title>
@@ -8,12 +8,9 @@
 <body>
   <nav class="navbar">
     <a href="/">Главная</a>
-    <a href="/chats" class="chats-link">
-      Чаты
-      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
-        <span class="badge"><%= unreadCount %></span>
-      <% } %>
-    </a>
+    <% if (typeof user !== 'undefined' && user) { %>
+      <a href="/chats" class="chats-link">Чаты</a>
+    <% } %>
     <span class="navbar-right">
       <a href="/login">Вход</a>
       <a href="/register">Регистрация</a>
@@ -22,11 +19,24 @@
   <div class="container">
     <h1>Вход</h1>
     <form method="POST" action="/login">
-      <label>Логин:<br><input type="text" name="username" required></label><br><br>
+      <label>Email:<br><input type="email" name="email" required></label><br><br>
       <label>Пароль:<br><input type="password" name="password" required></label><br><br>
       <button type="submit">Войти</button>
     </form>
     <p>Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
   </div>
+  <script>
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const e = params.get('error');
+      const s = params.get('success');
+      if (e === 'notfound') alert('Пользователь не найден');
+      if (e === 'wrong') alert('Неверный пароль');
+      if (e === 'missing') alert('Заполните все поля');
+      if (e === 'bademail') alert('Введите корректный email');
+      if (e === 'server') alert('Ошибка сервера, попробуйте позже');
+      if (s === 'registered') alert('Регистрация успешна. Войдите под своими данными.');
+    })();
+  </script>
 </body>
 </html> 

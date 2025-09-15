@@ -19,6 +19,13 @@
           <span class="badge"><%= unreadCount %></span>
         <% } %>
       </a>
+      <a href="/favorites">Избранное</a>
+      <% if (user && user.role === 'tenant') { %>
+        <a href="/my-bookings">Мои бронирования</a>
+      <% } %>
+      <% if (user && user.role === 'landlord') { %>
+        <a href="/orders">Заказы</a>
+      <% } %>
       <span class="navbar-right">
         <a href="/logout">Выйти</a>
       </span>
@@ -49,5 +56,10 @@
       <% }) %>
     </ul>
   </div>
+  <script>
+    window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/main.js"></script>
 </body>
 </html> 

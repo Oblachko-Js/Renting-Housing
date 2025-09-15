@@ -8,12 +8,9 @@
 <body>
   <nav class="navbar">
     <a href="/">Главная</a>
-    <a href="/chats" class="chats-link">
-      Чаты
-      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
-        <span class="badge"><%= unreadCount %></span>
-      <% } %>
-    </a>
+    <% if (typeof user !== 'undefined' && user) { %>
+      <a href="/chats" class="chats-link">Чаты</a>
+    <% } %>
     <span class="navbar-right">
       <a href="/login">Вход</a>
       <a href="/register">Регистрация</a>
@@ -22,7 +19,8 @@
   <div class="container">
     <h1>Регистрация</h1>
     <form method="POST" action="/register">
-      <label>Логин:<br><input type="text" name="username" required></label><br><br>
+      <label>Email (логин):<br><input type="email" name="email" required></label><br><br>
+      <label>Имя (отображаемое):<br><input type="text" name="display_name"></label><br><br>
       <label>Пароль:<br><input type="password" name="password" required></label><br><br>
       <label>Роль:<br>
         <select name="role" required>
@@ -34,5 +32,15 @@
     </form>
     <p>Уже есть аккаунт? <a href="/login">Войти</a></p>
   </div>
+  <script>
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const e = params.get('error');
+      if (e === 'exists') alert('Пользователь с таким email уже существует');
+      if (e === 'missing') alert('Заполните все поля');
+      if (e === 'bademail') alert('Введите корректный email');
+      if (e === 'server') alert('Ошибка сервера, попробуйте позже');
+    })();
+  </script>
 </body>
 </html> 

@@ -16,6 +16,10 @@
         <span class="badge"><%= unreadCount %></span>
       <% } %>
     </a>
+    <a href="/favorites">Избранное</a>
+    <% if (typeof user !== 'undefined' && user && user.role === 'landlord') { %>
+      <a href="/orders">Заказы</a>
+    <% } %>
     <span class="navbar-right">
       <a href="/logout">Выйти</a>
     </span>

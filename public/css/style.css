@@ -569,3 +569,63 @@ hr {
 #chat .chat-form-static button:hover, .chat-bg .chat-form-static button:hover {
   background: #125ea2;
 } 
+.heart-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.heart {
+  font-size: 22px;
+  color: #bbb;
+  transition: color 0.2s, transform 0.2s;
+}
+.heart.active {
+  color: #e53935;
+}
+.heart-btn:hover .heart {
+  transform: scale(1.1);
+}
+.navbar a[href="/favorites"]::before {
+  content: '\2605';
+  margin-right: 6px;
+} 
+
+/* Календарь занятости */
+.calendar {
+  display: inline-block;
+  margin: 12px 18px 18px 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.calendar .cal-header {
+  background: #f5f7fb;
+  padding: 8px 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.calendar .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 32px);
+  gap: 4px;
+  padding: 10px 12px 12px 12px;
+}
+.calendar .dow,
+.calendar .day {
+  text-align: center;
+  font-size: 13px;
+}
+.calendar .dow { color: #7a869a; }
+.calendar .day {
+  border-radius: 6px;
+  line-height: 32px;
+}
+.calendar .day.busy { background: #ffebee; color: #c62828; }
+.calendar .day.free { background: #e8f5e9; color: #2e7d32; }
+.calendar .day.out { color: #b0b8c4; }
+.calendar .legend { font-size: 12px; color: #7a869a; padding: 0 12px 12px; } 
