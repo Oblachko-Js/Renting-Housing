@@ -13,12 +13,7 @@
       <% if (user.role === 'landlord') { %>
         <a href="/listings/new">Новое объявление</a>
       <% } %>
-      <a href="/chats" class="chats-link">
-        Чаты
-        <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
-          <span class="badge"><%= unreadCount %></span>
-        <% } %>
-      </a>
+      <a href="/chats" class="chats-link">Чаты</a>
       <a href="/favorites">Избранное</a>
       <% if (user && user.role === 'tenant') { %>
         <a href="/my-bookings">Мои бронирования</a>
@@ -38,28 +33,66 @@
   </nav>
   <div class="container">
     <h1>Объявления</h1>
-    <form class="search-form" method="GET" action="/">
+    <form class="search-form" method="GET" action="/" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
       <input type="text" name="q" placeholder="Поиск по заголовку или адресу" value="<%= typeof q !== 'undefined' ? q : '' %>">
       <input type="number" name="min_price" placeholder="Мин. цена" value="<%= typeof min_price !== 'undefined' ? min_price : '' %>">
       <input type="number" name="max_price" placeholder="Макс. цена" value="<%= typeof max_price !== 'undefined' ? max_price : '' %>">
+      <input type="number" name="rooms_min" placeholder="Мин. комнат" value="<%= filters && filters.rooms_min ? filters.rooms_min : '' %>">
+      <input type="number" name="rooms_max" placeholder="Макс. комнат" value="<%= filters && filters.rooms_max ? filters.rooms_max : '' %>">
+      <select name="housing_type">
+        <option value="">Тип жилья</option>
+        <option value="apartment" <%= filters && filters.housing_type==='apartment' ? 'selected' : '' %>>Квартира</option>
+        <option value="house" <%= filters && filters.housing_type==='house' ? 'selected' : '' %>>Дом</option>
+        <option value="room" <%= filters && filters.housing_type==='room' ? 'selected' : '' %>>Комната</option>
+        <option value="studio" <%= filters && filters.housing_type==='studio' ? 'selected' : '' %>>Студия</option>
+      </select>
+      <input type="text" name="district" placeholder="Район" value="<%= filters && filters.district ? filters.district : '' %>">
+      <select name="amenity" multiple size="3" title="Удобства">
+        <option value="wifi" <%= (filters && Array.isArray(filters.amenity) ? filters.amenity.includes('wifi') : false) ? 'selected' : '' %>>Wi‑Fi</option>
+        <option value="parking" <%= (filters && Array.isArray(filters.amenity) ? filters.amenity.includes('parking') : false) ? 'selected' : '' %>>Парковка</option>
+        <option value="pets" <%= (filters && Array.isArray(filters.amenity) ? filters.amenity.includes('pets') : false) ? 'selected' : '' %>>Можно с животными</option>
+        <option value="balcony" <%= (filters && Array.isArray(filters.amenity) ? filters.amenity.includes('balcony') : false) ? 'selected' : '' %>>Балкон</option>
+        <option value="washing" <%= (filters && Array.isArray(filters.amenity) ? filters.amenity.includes('washing') : false) ? 'selected' : '' %>>Стиральная машина</option>
+      </select>
       <button type="submit">Найти</button>
     </form>
-    <% if (user && user.role === 'landlord') { %>
-      <p><a class="btn" href="/listings/new">+ Новое объявление</a></p>
-    <% } %>
+
+    <div id="map" style="height:360px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
+
     <ul class="listing-list">
       <% listings.forEach(function(listing) { %>
         <li class="listing-item">
           <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
           <span><%= listing.price %> руб. — <%= listing.address %></span>
+          <% if (listing.rooms) { %><div>Комнат: <%= listing.rooms %></div><% } %>
+          <% if (listing.housing_type) { %><div>Тип: <%= listing.housing_type %></div><% } %>
+          <% if (listing.district) { %><div>Район: <%= listing.district %></div><% } %>
+          <% if (listing.amenities) { %><div>Удобства: <%= listing.amenities %></div><% } %>
         </li>
       <% }) %>
     </ul>
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+    window.LISTING_POINTS = <%- JSON.stringify(listings.map(l => ({ id: l.id, title: l.title, lat: l.lat, lng: l.lng }))) %>;
   </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/main.js"></script>
+  <!-- Яндекс.Карты: подставьте свой API-ключ -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=b9e568fc-f1b8-4905-a931-d77573bb7c0c"></script>
+  <script>
+    (function(){
+      if (!window.ymaps) return;
+      ymaps.ready(function(){
+        var points = (window.LISTING_POINTS || []).filter(function(p){ return typeof p.lat === 'number' && typeof p.lng === 'number'; });
+        var center = points.length ? [points[0].lat, points[0].lng] : [55.751244, 37.618423];
+        var map = new ymaps.Map('map', { center: center, zoom: points.length ? 11 : 10 });
+        points.forEach(function(p){
+          var pm = new ymaps.Placemark([p.lat, p.lng], { balloonContent: `<a href='/listings/${p.id}'>${p.title}</a>` });
+          map.geoObjects.add(pm);
+        });
+      });
+    })();
+  </script>
 </body>
 </html> 

@@ -12,12 +12,7 @@
     <% if (user.role === 'landlord') { %>
       <a href="/listings/new">Новое объявление</a>
     <% } %>
-    <a href="/chats" class="chats-link">
-      Чаты
-      <% if (typeof unreadCount !== 'undefined' && unreadCount > 0) { %>
-        <span class="badge"><%= unreadCount %></span>
-      <% } %>
-    </a>
+    <a href="/chats" class="chats-link">Чаты</a>
     <a href="/favorites">Избранное</a>
     <% if (user.role === 'tenant') { %>
       <a href="/my-bookings">Мои бронирования</a>
@@ -56,6 +51,9 @@
       </ul>
       <a class="btn" href="/listings/new">+ Новое объявление</a>
     <% } %>
+    <p>
+      <button id="notify-toggle" class="btn" type="button" style="margin-top:12px;">Включить уведомления</button>
+    </p>
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;

@@ -56,6 +56,24 @@ const pool = new Pool({
   port: 5432,
 });
 
+// Ленивая инициализация дополнительных колонок в listings
+let listingsColumnsEnsured = false;
+async function ensureListingExtraColumns() {
+  if (listingsColumnsEnsured) return;
+  try {
+    await pool.query(
+      `ALTER TABLE listings
+         ADD COLUMN IF NOT EXISTS rooms INTEGER,
+         ADD COLUMN IF NOT EXISTS housing_type VARCHAR(20),
+         ADD COLUMN IF NOT EXISTS district VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS amenities TEXT,
+         ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
+         ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`
+    );
+  } catch (_) {}
+  listingsColumnsEnsured = true;
+}
+
 // Сессии
 app.use(
   session({
@@ -104,7 +122,17 @@ const upload = multer({ storage });
 
 // Главная страница
 app.get("/", async (req, res) => {
-  let { q, min_price, max_price } = req.query;
+  await ensureListingExtraColumns();
+  let {
+    q,
+    min_price,
+    max_price,
+    rooms_min,
+    rooms_max,
+    housing_type,
+    district,
+    amenity,
+  } = req.query;
   let where = [];
   let params = [];
   if (q) {
@@ -121,7 +149,31 @@ app.get("/", async (req, res) => {
     params.push(max_price);
     where.push(`l.price <= $${params.length}`);
   }
-  let sql = `SELECT l.*, u.username AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
+  if (rooms_min) {
+    params.push(rooms_min);
+    where.push(`l.rooms >= $${params.length}`);
+  }
+  if (rooms_max) {
+    params.push(rooms_max);
+    where.push(`l.rooms <= $${params.length}`);
+  }
+  if (housing_type) {
+    params.push(housing_type);
+    where.push(`l.housing_type = $${params.length}`);
+  }
+  if (district) {
+    params.push(`%${district}%`);
+    where.push(`l.district ILIKE $${params.length}`);
+  }
+  if (amenity) {
+    // amenity может быть строкой или массивом
+    const ams = Array.isArray(amenity) ? amenity : [amenity];
+    for (const a of ams) {
+      params.push(`%${a}%`);
+      where.push(`l.amenities ILIKE $${params.length}`);
+    }
+  }
+  let sql = `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
     sql += " WHERE " + where.join(" AND ");
   }
@@ -139,6 +191,13 @@ app.get("/", async (req, res) => {
     q,
     min_price,
     max_price,
+    filters: {
+      rooms_min,
+      rooms_max,
+      housing_type,
+      district,
+      amenity: amenity || [],
+    },
     unreadCount: res.locals.unreadCount,
   });
 });
@@ -302,11 +361,47 @@ app.post("/listings/new", upload.single("photo"), async (req, res) => {
   if (!req.session.userId || req.session.role !== "landlord") {
     return res.redirect("/login");
   }
-  const { title, description, price, address } = req.body;
+  await ensureListingExtraColumns();
+  const {
+    title,
+    description,
+    price,
+    address,
+    rooms,
+    housing_type,
+    district,
+    lat,
+    lng,
+  } = req.body;
+  let amenities = req.body.amenities;
+  // amenities могут прийти как строка или массив
+  if (Array.isArray(amenities)) {
+    amenities = amenities.join(",");
+  } else if (typeof amenities === "string") {
+    // одиночное значение
+  } else {
+    amenities = null;
+  }
+  const latNum = lat ? Number(lat) : null;
+  const lngNum = lng ? Number(lng) : null;
   const photo = req.file ? req.file.filename : null;
   await pool.query(
-    `INSERT INTO listings (title, description, price, address, owner_id, photo) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [title, description, price, address, req.session.userId, photo]
+    `INSERT INTO listings (title, description, price, address, owner_id, photo, rooms, housing_type, district, amenities, lat, lng)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      title,
+      description,
+      price,
+      address,
+      req.session.userId,
+      photo,
+      rooms || null,
+      housing_type || null,
+      district || null,
+      amenities,
+      latNum,
+      lngNum,
+    ]
   );
   res.redirect("/");
 });
