@@ -49,7 +49,7 @@ const io = new Server(server);
 
 // Настройка подключения к PostgreSQL
 const pool = new Pool({
-  user: "andrejpancenko", // замени на своего пользователя
+  user: "andrey", // замени на своего пользователя
   host: "localhost",
   database: "myprogram", // замени на свою БД
   password: "", // замени на свой пароль
