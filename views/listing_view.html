@@ -52,6 +52,15 @@
     <p><strong>Описание:</strong> <%= listing.description %></p>
     <p><strong>Цена:</strong> <%= listing.price %> руб.</p>
     <p><strong>Адрес:</strong> <%= listing.address %></p>
+    <% 
+      const housingMap = { apartment:'Квартира', house:'Дом', room:'Комната', studio:'Студия' };
+      const typeRu = listing.housing_type ? (housingMap[listing.housing_type] || listing.housing_type) : '';
+      const ams = (listing.amenities || '').split(',').map(function(s){ return (s||'').trim(); }).filter(function(x){ return x; });
+      const amenityMap = { wifi:'Wi‑Fi', parking:'Парковка', pets:'Можно с животными', balcony:'Балкон', washing:'Стиральная машина' };
+      const amenRu = ams.map(function(a){ return amenityMap[a] || a; });
+    %>
+    <p><strong>Тип:</strong> <%= typeRu || '—' %></p>
+    <p><strong>Удобства:</strong> <%= amenRu.length ? amenRu.join(', ') : '—' %></p>
     <p><strong>Владелец:</strong> <%= listing.owner_name %></p>
     <% if (typeof avg_rating !== 'undefined' && avg_rating) { %>
       <div style="font-size:1.2em;margin-bottom:8px;">Средний рейтинг: <b><%= avg_rating %></b> ★</div>
