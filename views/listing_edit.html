@@ -21,7 +21,41 @@
       <label>Заголовок:<br><input type="text" name="title" value="<%= listing.title %>" required></label><br><br>
       <label>Описание:<br><textarea name="description" required><%= listing.description %></textarea></label><br><br>
       <label>Цена:<br><input type="number" name="price" step="0.01" value="<%= listing.price %>" required></label><br><br>
-      <label>Адрес:<br><input type="text" name="address" value="<%= listing.address %>" required></label><br><br>
+      <label>Адрес:<br><input type="text" name="address" id="addr" value="<%= listing.address %>" required></label><br><br>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <label>Количество комнат:<br><input type="number" min="1" name="rooms" value="<%= listing.rooms || '' %>" placeholder="Напр. 2"></label>
+        <label>Тип жилья:<br>
+          <select name="housing_type">
+            <option value="" <%= !listing.housing_type ? 'selected' : '' %>></option>
+            <option value="apartment" <%= listing.housing_type==='apartment' ? 'selected' : '' %>>Квартира</option>
+            <option value="house" <%= listing.housing_type==='house' ? 'selected' : '' %>>Дом</option>
+            <option value="room" <%= listing.housing_type==='room' ? 'selected' : '' %>>Комната</option>
+            <option value="studio" <%= listing.housing_type==='studio' ? 'selected' : '' %>>Студия</option>
+          </select>
+        </label>
+        <label>Район:<br><input type="text" name="district" id="district" value="<%= listing.district || '' %>" placeholder="Напр. Центральный"></label>
+      </div><br>
+
+      <fieldset style="border:1px solid #e0e0e0;padding:10px 12px;border-radius:8px;">
+        <legend>Удобства</legend>
+        <% const ams = (listing.amenities || '').split(',').map(function(s){return (s||'').trim();}); %>
+        <label><input type="checkbox" name="amenities" value="wifi" <%= ams.includes('wifi') ? 'checked' : '' %>> Wi‑Fi</label>
+        <label><input type="checkbox" name="amenities" value="parking" <%= ams.includes('parking') ? 'checked' : '' %>> Парковка</label>
+        <label><input type="checkbox" name="amenities" value="pets" <%= ams.includes('pets') ? 'checked' : '' %>> Можно с животными</label>
+        <label><input type="checkbox" name="amenities" value="balcony" <%= ams.includes('balcony') ? 'checked' : '' %>> Балкон</label>
+        <label><input type="checkbox" name="amenities" value="washing" <%= ams.includes('washing') ? 'checked' : '' %>> Стиральная машина</label>
+      </fieldset><br>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+          <label>Широта (lat):<br><input type="number" step="0.000001" name="lat" id="lat" value="<%= typeof listing.lat === 'number' ? listing.lat : (listing.lat || '') %>" placeholder="55.751244"></label>
+        </div>
+        <div>
+          <label>Долгота (lng):<br><input type="number" step="0.000001" name="lng" id="lng" value="<%= typeof listing.lng === 'number' ? listing.lng : (listing.lng || '') %>" placeholder="37.618423"></label>
+        </div>
+      </div>
+      <div id="ymap" data-yakey="d3d8195a-77c2-4c5b-903a-5876e929c27b" style="height:300px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
       <% if (listing.photo) { %>
         <div style="margin-bottom:12px;"><img src="/images/<%= listing.photo %>" alt="Фото" style="max-width:200px;"></div>
       <% } %>
@@ -30,5 +64,177 @@
     </form>
     <p><a href="/listings/<%= listing.id %>">Назад к объявлению</a></p>
   </div>
+  <!-- Яндекс.Карты: подставьте свой API-ключ в параметре apikey -->
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=d3d8195a-77c2-4c5b-903a-5876e929c27b"></script>
+  <script>
+    (function(){
+      var latEl = document.getElementById('lat');
+      var lngEl = document.getElementById('lng');
+      var addrEl = document.getElementById('addr');
+      var distEl = document.getElementById('district');
+      var mapDiv = document.getElementById('ymap');
+      var KEY = (mapDiv && mapDiv.getAttribute('data-yakey')) || '';
+      var defaultLat = parseFloat(latEl.value) || 55.751244;
+      var defaultLng = parseFloat(lngEl.value) || 37.618423;
+
+      function setLatLng(lat, lng) {
+        if (latEl) latEl.value = Number(lat).toFixed(6);
+        if (lngEl) lngEl.value = Number(lng).toFixed(6);
+      }
+
+      function extractDistrictFromComponents(components) {
+        if (!Array.isArray(components)) return '';
+        var found = components.find(function(c){ return c && (c.kind === 'district' || c.kind === 'area'); });
+        return found && found.name ? found.name : '';
+      }
+
+      function reverseGeocodeHTTP(lat, lng) {
+        if (!KEY) return;
+        var url = 'https://geocode-maps.yandex.ru/1.x/?format=json&apikey=' + encodeURIComponent(KEY) + '&geocode=' + encodeURIComponent(lng + ',' + lat);
+        fetch(url).then(function(r){ return r.json(); }).then(function(j){
+          try {
+            var member = j.response.GeoObjectCollection.featureMember[0];
+            if (!member) return;
+            var meta = member.GeoObject.metaDataProperty.GeocoderMetaData;
+            var address = (meta && meta.Address && (meta.Address.formatted || meta.text)) || '';
+            if (addrEl && address) addrEl.value = address;
+            var comps = (meta && meta.Address && meta.Address.Components) || [];
+            var dist = extractDistrictFromComponents(comps);
+            if (distEl && dist) distEl.value = dist;
+          } catch(_){ }
+        }).catch(function(){});
+      }
+
+      function forwardGeocodeHTTP(query, cb) {
+        if (!KEY) return;
+        var url = 'https://geocode-maps.yandex.ru/1.x/?format=json&apikey=' + encodeURIComponent(KEY) + '&geocode=' + encodeURIComponent(query);
+        fetch(url).then(function(r){ return r.json(); }).then(function(j){
+          try {
+            var member = j.response.GeoObjectCollection.featureMember[0];
+            if (!member) return;
+            var pos = member.GeoObject.Point.pos; // "lng lat"
+            var parts = pos.split(' ');
+            var lng = parseFloat(parts[0]);
+            var lat = parseFloat(parts[1]);
+            var meta = member.GeoObject.metaDataProperty.GeocoderMetaData;
+            var comps = (meta && meta.Address && meta.Address.Components) || [];
+            var dist = extractDistrictFromComponents(comps);
+            if (distEl && dist) distEl.value = dist;
+            cb && cb(lat, lng);
+          } catch(_){ }
+        }).catch(function(){});
+      }
+
+      function updateStaticMap(lat, lng) {
+        if (!mapDiv) return;
+        var size = mapDiv.clientWidth > 0 ? Math.min(mapDiv.clientWidth, 650) : 600;
+        var url = 'https://static-maps.yandex.ru/1.x/?l=map&z=14&size=' + size + ',300&ll=' + lng + ',' + lat + '&pt=' + lng + ',' + lat + ',pm2rdm';
+        var img = mapDiv.querySelector('img');
+        if (!img) {
+          img = document.createElement('img');
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.alt = 'Карта';
+          mapDiv.innerHTML = '';
+          mapDiv.appendChild(img);
+        }
+        img.src = url;
+      }
+
+      if (window.ymaps && typeof ymaps.ready === 'function') {
+        ymaps.ready(function(){
+          var lat = defaultLat;
+          var lng = defaultLng;
+          var map = new ymaps.Map('ymap', { center: [lat, lng], zoom: 12 });
+          var placemark = new ymaps.Placemark([lat, lng], {}, { draggable: true });
+          map.geoObjects.add(placemark);
+
+          function fillFromReverseGeocode(coords){
+            ymaps.geocode(coords).then(function (res) {
+              var first = res.geoObjects.get(0);
+              if (!first) return;
+              var addrLine = first.getAddressLine && first.getAddressLine();
+              if (addrLine && addrEl) addrEl.value = addrLine;
+              var comps = first.getAddressComponents && first.getAddressComponents();
+              if (Array.isArray(comps) && distEl) {
+                var districtComp = comps.find(function(c){ return c && (c.kind === 'district' || c.kind === 'area'); });
+                if (districtComp && districtComp.name) distEl.value = districtComp.name;
+              }
+            });
+          }
+
+          function setPos(coords){
+            placemark.geometry.setCoordinates(coords);
+            setLatLng(coords[0], coords[1]);
+          }
+
+          function setPosAndReverse(coords){
+            setPos(coords);
+            fillFromReverseGeocode(coords);
+          }
+
+          map.events.add('click', function (e) {
+            var coords = e.get('coords');
+            setPosAndReverse(coords);
+          });
+          placemark.events.add('dragend', function(){
+            setPosAndReverse(placemark.geometry.getCoordinates());
+          });
+
+          function fly(){
+            var la = parseFloat(latEl.value); var lo = parseFloat(lngEl.value);
+            if (!isNaN(la) && !isNaN(lo)) { setPosAndReverse([la, lo]); map.setCenter([la, lo]); }
+          }
+          latEl.addEventListener('change', fly);
+          lngEl.addEventListener('change', fly);
+
+          addrEl.addEventListener('keydown', function(ev){
+            if (ev.key === 'Enter') {
+              ev.preventDefault();
+              ymaps.geocode(addrEl.value).then(function (res) {
+                var first = res.geoObjects.get(0);
+                if (first) {
+                  var coords = first.geometry.getCoordinates();
+                  setPos(coords); map.setCenter(coords);
+                  var comps = first.getAddressComponents && first.getAddressComponents();
+                  if (Array.isArray(comps) && distEl) {
+                    var districtComp = comps.find(function(c){ return c && (c.kind === 'district' || c.kind === 'area'); });
+                    if (districtComp && districtComp.name) distEl.value = districtComp.name;
+                  }
+                }
+              });
+            }
+          });
+        });
+      } else {
+        // Static API fallback
+        var lat = defaultLat;
+        var lng = defaultLng;
+        setLatLng(lat, lng);
+        updateStaticMap(lat, lng);
+        reverseGeocodeHTTP(lat, lng);
+
+        function onLatLngChange(){
+          var la = parseFloat(latEl.value); var lo = parseFloat(lngEl.value);
+          if (!isNaN(la) && !isNaN(lo)) {
+            updateStaticMap(la, lo);
+            reverseGeocodeHTTP(la, lo);
+          }
+        }
+        latEl.addEventListener('change', onLatLngChange);
+        lngEl.addEventListener('change', onLatLngChange);
+
+        addrEl.addEventListener('keydown', function(ev){
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            forwardGeocodeHTTP(addrEl.value, function(la, lo){
+              setLatLng(la, lo);
+              updateStaticMap(la, lo);
+            });
+          }
+        });
+      }
+    })();
+  </script>
 </body>
-</html> 
+</html>

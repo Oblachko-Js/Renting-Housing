@@ -54,6 +54,32 @@
     <p>
       <button id="notify-toggle" class="btn" type="button" style="margin-top:12px;">Включить уведомления</button>
     </p>
+    <% if (history && history.length) { %>
+      <h2 style="margin-top:24px;">Недавние просмотры</h2>
+      <div class="history-carousel" data-visible="3">
+        <div class="history-viewport">
+          <div class="history-track">
+            <% history.forEach(function(item){ %>
+              <a class="history-card" href="/listings/<%= item.id %>" draggable="false">
+                <div class="history-thumb">
+                  <% if (item.photo) { %>
+                    <img src="/images/<%= item.photo %>" alt="<%= item.title %>" draggable="false">
+                  <% } else { %>
+                    <div class="history-placeholder">Нет фото</div>
+                  <% } %>
+                </div>
+                <div class="history-info">
+                  <div class="history-title"><%= item.title %></div>
+                  <div class="history-price"><%= item.price %> руб.</div>
+                </div>
+              </a>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="history-empty">Пока нет просмотров</div>
+    <% } %>
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
@@ -72,6 +98,66 @@
       form.style.display = 'none';
       editBtn.style.display = 'inline-block';
     });
+
+    // Инициализация карусели истории (перетаскивание)
+    (function initHistoryCarousel(){
+      const carousel = document.querySelector('.history-carousel');
+      if (!carousel) return;
+      const viewport = carousel.querySelector('.history-viewport');
+      const track = carousel.querySelector('.history-track');
+      const cards = Array.from(track.children);
+      if (!cards.length) return;
+      let startX = 0;
+      let currentX = 0;
+      let baseTranslate = 0;
+      let dragging = false;
+      let dragMoved = false; // было ли движение больше порога
+      const threshold = 5; // px
+      const gap = 12;
+      function cardWidth(){ return cards[0].getBoundingClientRect().width + gap; }
+      function visibleCount(){
+        const step = cardWidth();
+        const vp = viewport.getBoundingClientRect().width;
+        return Math.max(1, Math.round(vp / step));
+      }
+      function clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }
+      function onDown(x){ dragging = true; dragMoved = false; startX = x; currentX = x; track.style.transition = 'none'; }
+      function onMove(x,e){ if (!dragging) return; currentX = x; const dx = currentX - startX; if (Math.abs(dx) > threshold) { dragMoved = true; }
+        if (dragMoved && e) e.preventDefault();
+        track.style.transform = `translateX(${baseTranslate + dx}px)`; }
+      function onUp(){
+        if (!dragging) return;
+        const dx = currentX - startX;
+        dragging = false;
+        const step = cardWidth();
+        const maxTranslate = 0;
+        const minTranslate = -step * Math.max(0, cards.length - visibleCount());
+        baseTranslate = clamp(baseTranslate + dx, minTranslate, maxTranslate); // без привязки к карточкам
+        track.style.transition = 'transform 0.15s ease-out';
+        track.style.transform = `translateX(${baseTranslate}px)`;
+        setTimeout(()=>{ dragMoved = false; },0);
+      }
+      // Mouse (начало на любом месте внутри трека, включая ссылки)
+      track.addEventListener('mousedown', (e)=> { e.preventDefault(); onDown(e.clientX); });
+      window.addEventListener('mousemove', (e)=> onMove(e.clientX));
+      window.addEventListener('mouseup', onUp);
+      // Touch
+      track.addEventListener('touchstart', (e)=> onDown(e.touches[0].clientX), {passive:true});
+      window.addEventListener('touchmove', (e)=> onMove(e.touches[0].clientX, e), {passive:false});
+      window.addEventListener('touchend', onUp);
+      // Блокируем переход по ссылке, если был drag
+      cards.forEach((card)=>{
+        card.addEventListener('click', (e)=>{ if (dragMoved) { e.preventDefault(); e.stopPropagation(); } });
+      });
+      // Resize: просто переограничить края без привязки к карточкам
+      window.addEventListener('resize', () => {
+        const step = cardWidth();
+        const maxTranslate = 0;
+        const minTranslate = -step * Math.max(0, cards.length - visibleCount());
+        baseTranslate = clamp(baseTranslate, minTranslate, maxTranslate);
+        track.style.transform = `translateX(${baseTranslate}px)`;
+      });
+    })();
   </script>
 </body>
 </html> 

@@ -121,6 +121,28 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Главная страница
+
+// Ленивая инициализация таблицы истории просмотров объявлений (глобально)
+let listingViewsTableEnsured = false;
+async function ensureListingViewsTable() {
+  if (listingViewsTableEnsured) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS listing_views (
+        id SERIAL PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        viewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        ip INET,
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_listing_views_listing ON listing_views(listing_id);
+      CREATE INDEX IF NOT EXISTS idx_listing_views_viewer ON listing_views(viewer_id);
+      CREATE INDEX IF NOT EXISTS idx_listing_views_created ON listing_views(created_at);
+    `);
+  } catch (_) {}
+  listingViewsTableEnsured = true;
+}
 app.get("/", async (req, res) => {
   await ensureListingExtraColumns();
   let {
@@ -314,9 +336,24 @@ app.get("/profile", async (req, res) => {
     );
     listings = result.rows;
   }
+  // История просмотров: показываем, что САМ пользователь смотрел (для обеих ролей)
+  await ensureListingViewsTable();
+  let history = [];
+  const h = await pool.query(
+    `SELECT l.id, l.title, l.price, l.photo, l.address, MAX(v.created_at) AS viewed_at
+       FROM listing_views v
+       JOIN listings l ON l.id = v.listing_id
+      WHERE v.viewer_id = $1
+      GROUP BY l.id, l.title, l.price, l.photo, l.address
+      ORDER BY viewed_at DESC
+      LIMIT 20`,
+    [user.id]
+  );
+  history = h.rows;
   res.render("profile", {
     user,
     listings,
+    history,
     unreadCount: res.locals.unreadCount,
   });
 });
@@ -409,6 +446,7 @@ app.post("/listings/new", upload.single("photo"), async (req, res) => {
 // Просмотр объявления (добавляю признак isFavorite)
 app.get("/listings/:id", async (req, res) => {
   const id = req.params.id;
+  await ensureListingViewsTable();
   const result = await pool.query(
     `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_name
      FROM listings l JOIN users u ON l.owner_id = u.id WHERE l.id = $1`,
@@ -416,6 +454,21 @@ app.get("/listings/:id", async (req, res) => {
   );
   if (result.rows.length === 0) return res.send("Объявление не найдено");
   const listing = result.rows[0];
+  // Логирование просмотра: только если не владелец
+  try {
+    if (!req.session.userId || req.session.userId !== listing.owner_id) {
+      await pool.query(
+        `INSERT INTO listing_views (listing_id, viewer_id, ip, user_agent)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          listing.id,
+          req.session.userId || null,
+          req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || null,
+          req.headers["user-agent"] || null,
+        ]
+      );
+    }
+  } catch (_) {}
   const canEdit = req.session.userId && req.session.userId === listing.owner_id;
   const user = req.session.userId
     ? {
@@ -467,7 +520,17 @@ app.get("/listings/:id/edit", async (req, res) => {
 // Обработка редактирования объявления
 app.post("/listings/:id/edit", upload.single("photo"), async (req, res) => {
   const id = req.params.id;
-  const { title, description, price, address } = req.body;
+  const {
+    title,
+    description,
+    price,
+    address,
+    rooms,
+    housing_type,
+    district,
+    lat,
+    lng,
+  } = req.body;
   const result = await pool.query(`SELECT * FROM listings WHERE id = $1`, [id]);
   if (result.rows.length === 0) return res.send("Объявление не найдено");
   const listing = result.rows[0];
@@ -483,9 +546,45 @@ app.post("/listings/:id/edit", upload.single("photo"), async (req, res) => {
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
   }
+  // собрать amenities
+  let amenities = req.body.amenities;
+  if (Array.isArray(amenities)) {
+    amenities = amenities.join(",");
+  } else if (typeof amenities === "string") {
+    // single value
+  } else {
+    amenities = null;
+  }
+  const latNum = lat ? Number(lat) : null;
+  const lngNum = lng ? Number(lng) : null;
   await pool.query(
-    `UPDATE listings SET title = $1, description = $2, price = $3, address = $4, photo = $5 WHERE id = $6`,
-    [title, description, price, address, photo, id]
+    `UPDATE listings SET
+       title = $1,
+       description = $2,
+       price = $3,
+       address = $4,
+       photo = $5,
+       rooms = $6,
+       housing_type = $7,
+       district = $8,
+       amenities = $9,
+       lat = $10,
+       lng = $11
+     WHERE id = $12`,
+    [
+      title,
+      description,
+      price,
+      address,
+      photo,
+      rooms || null,
+      housing_type || null,
+      district || null,
+      amenities,
+      latNum,
+      lngNum,
+      id,
+    ]
   );
   res.redirect(`/listings/${id}`);
 });
@@ -498,6 +597,13 @@ app.post("/listings/:id/delete", async (req, res) => {
   const listing = result.rows[0];
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
+  }
+  // Удалить файл фото, если он есть
+  if (listing.photo) {
+    const photoPath = path.join(uploadDir, listing.photo);
+    if (fs.existsSync(photoPath)) {
+      fs.unlinkSync(photoPath);
+    }
   }
   await pool.query(`DELETE FROM listings WHERE id = $1`, [id]);
   res.redirect("/");

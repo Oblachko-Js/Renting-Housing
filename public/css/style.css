@@ -629,3 +629,47 @@ hr {
 .calendar .day.free { background: #e8f5e9; color: #2e7d32; }
 .calendar .day.out { color: #b0b8c4; }
 .calendar .legend { font-size: 12px; color: #7a869a; padding: 0 12px 12px; } 
+
+/* История просмотров */
+.history-feed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.history-card {
+  display: flex;
+  gap: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fafcff;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.2s, transform 0.05s;
+}
+.history-card:hover { box-shadow: 0 4px 18px rgba(25,118,210,0.08); transform: translateY(-1px); }
+.history-thumb { width: 72px; height: 72px; flex-shrink: 0; border-radius: 6px; overflow: hidden; background: #f0f4f8; display:flex; align-items:center; justify-content:center; color:#7a869a; font-size:12px; }
+.history-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.history-info { display: flex; flex-direction: column; justify-content: center; }
+.history-title { font-weight: 600; margin-bottom: 4px; color: #1a237e; }
+.history-price { color: #2e7d32; font-weight: 600; }
+.history-empty { margin-top: 8px; color: #7a869a; }
+
+/* Карусель истории */
+.history-carousel { position: relative; display: block; }
+.history-viewport { overflow: hidden; width: 100%; cursor: grab; }
+.history-viewport:active { cursor: grabbing; }
+.history-track { display: flex; transition: transform 0.2s ease; gap: 12px; will-change: transform; }
+.history-card { flex: 0 0 calc((100% - 24px) / 3 - 20px); width: calc((100% - 24px) / 3 - 20px); height: 55px; padding: 6px; } /* ещё уже, максимум 3 карточки */
+.history-thumb { width: 55px; height: 55px; }
+.history-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.history-info { min-width: 0; }
+/* убраны кнопки */
+
+@media (max-width: 900px) {
+  .history-card { flex-basis: calc((100% - 12px) / 2 - 20px); width: calc((100% - 12px) / 2 - 20px); height: 55px; }
+}
+@media (max-width: 560px) {
+  .history-card { flex-basis: 100%; width: 100%; height: 55px; } /* 1 карточка */
+}
