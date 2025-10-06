@@ -68,7 +68,8 @@ async function ensureListingExtraColumns() {
          ADD COLUMN IF NOT EXISTS district VARCHAR(100),
          ADD COLUMN IF NOT EXISTS amenities TEXT,
          ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
-         ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION`
+         ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
+         ADD COLUMN IF NOT EXISTS photos TEXT`
     );
   } catch (_) {}
   listingsColumnsEnsured = true;
@@ -119,6 +120,7 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+const uploadMultiple = multer({ storage }).array('photos', 10); // максимум 10 фото
 
 // Главная страница
 
@@ -143,7 +145,8 @@ async function ensureListingViewsTable() {
   } catch (_) {}
   listingViewsTableEnsured = true;
 }
-app.get("/", async (req, res) => {
+// API endpoint для загрузки объявлений с пагинацией
+app.get("/api/listings", async (req, res) => {
   await ensureListingExtraColumns();
   let {
     q,
@@ -154,7 +157,14 @@ app.get("/", async (req, res) => {
     housing_type,
     district,
     amenity,
+    page = 1,
+    limit = 3
   } = req.query;
+  
+  page = parseInt(page);
+  limit = parseInt(limit);
+  const offset = (page - 1) * limit;
+  
   let where = [];
   let params = [];
   if (q) {
@@ -195,14 +205,118 @@ app.get("/", async (req, res) => {
       where.push(`l.amenities ILIKE $${params.length}`);
     }
   }
+  
   let sql = `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
     sql += " WHERE " + where.join(" AND ");
   }
-  sql += " ORDER BY l.id DESC";
+  sql += " ORDER BY l.id DESC LIMIT $" + (params.length + 1) + " OFFSET $" + (params.length + 2);
+  params.push(limit, offset);
+  
   const listings = await pool.query(sql, params);
+  
+  // Получаем общее количество для проверки есть ли ещё страницы
+  let countSql = `SELECT COUNT(*) FROM listings l JOIN users u ON l.owner_id = u.id`;
+  if (where.length > 0) {
+    countSql += " WHERE " + where.join(" AND ");
+  }
+  const countParams = params.slice(0, -2); // убираем limit и offset
+  const countResult = await pool.query(countSql, countParams);
+  const totalCount = parseInt(countResult.rows[0].count);
+  const hasMore = (offset + limit) < totalCount;
+  
+  res.json({
+    listings: listings.rows,
+    hasMore,
+    currentPage: page,
+    totalCount
+  });
+});
+
+app.get("/", async (req, res) => {
+  await ensureListingExtraColumns();
+  let {
+    q,
+    min_price,
+    max_price,
+    rooms_min,
+    rooms_max,
+    housing_type,
+    district,
+    amenity,
+  } = req.query;
+  
+  // Для главной страницы загружаем только первые 3 объявления
+  let where = [];
+  let params = [];
+  if (q) {
+    params.push(`%${q}%`);
+    where.push(
+      `(l.title ILIKE $${params.length} OR l.address ILIKE $${params.length})`
+    );
+  }
+  if (min_price) {
+    params.push(min_price);
+    where.push(`l.price >= $${params.length}`);
+  }
+  if (max_price) {
+    params.push(max_price);
+    where.push(`l.price <= $${params.length}`);
+  }
+  if (rooms_min) {
+    params.push(rooms_min);
+    where.push(`l.rooms >= $${params.length}`);
+  }
+  if (rooms_max) {
+    params.push(rooms_max);
+    where.push(`l.rooms <= $${params.length}`);
+  }
+  if (housing_type) {
+    params.push(housing_type);
+    where.push(`l.housing_type = $${params.length}`);
+  }
+  if (district) {
+    params.push(`%${district}%`);
+    where.push(`l.district ILIKE $${params.length}`);
+  }
+  if (amenity) {
+    // amenity может быть строкой или массивом
+    const ams = Array.isArray(amenity) ? amenity : [amenity];
+    for (const a of ams) {
+      params.push(`%${a}%`);
+      where.push(`l.amenities ILIKE $${params.length}`);
+    }
+  }
+  
+  let sql = `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
+  if (where.length > 0) {
+    sql += " WHERE " + where.join(" AND ");
+  }
+  sql += " ORDER BY l.id DESC LIMIT 3";
+  const listings = await pool.query(sql, params);
+  
+  // Получаем общее количество для проверки есть ли ещё объявления
+  let countSql = `SELECT COUNT(*) FROM listings l JOIN users u ON l.owner_id = u.id`;
+  if (where.length > 0) {
+    countSql += " WHERE " + where.join(" AND ");
+  }
+  const countResult = await pool.query(countSql, params);
+  const totalCount = parseInt(countResult.rows[0].count);
+  const hasMore = listings.rows.length < totalCount;
+  
+  // Для карты загружаем ВСЕ объявления (без LIMIT)
+  let mapSql = `SELECT l.id, l.title, l.lat, l.lng FROM listings l JOIN users u ON l.owner_id = u.id`;
+  if (where.length > 0) {
+    mapSql += " WHERE " + where.join(" AND ");
+  }
+  mapSql += " ORDER BY l.id DESC";
+  const allListings = await pool.query(mapSql, params);
+  
   res.render("index", {
     listings: listings.rows,
+    allListings: allListings.rows, // Все объявления для карты
+    hasMore,
+    totalCount,
     user: req.session.userId
       ? {
           id: req.session.userId,
@@ -390,11 +504,12 @@ app.get("/listings/new", (req, res) => {
   res.render("listing_new", {
     unreadCount: res.locals.unreadCount,
     user: { id: req.session.userId, role: req.session.role },
+    error: req.query.error,
   });
 });
 
 // Обработка создания объявления
-app.post("/listings/new", upload.single("photo"), async (req, res) => {
+app.post("/listings/new", uploadMultiple, async (req, res) => {
   if (!req.session.userId || req.session.role !== "landlord") {
     return res.redirect("/login");
   }
@@ -421,10 +536,29 @@ app.post("/listings/new", upload.single("photo"), async (req, res) => {
   }
   const latNum = lat ? Number(lat) : null;
   const lngNum = lng ? Number(lng) : null;
-  const photo = req.file ? req.file.filename : null;
+  
+  // Проверяем количество загруженных фото
+  const files = req.files || [];
+  if (files.length < 3) {
+    // Удаляем загруженные файлы если их меньше 3
+    files.forEach(file => {
+      try {
+        fs.unlinkSync(path.join(uploadDir, file.filename));
+      } catch (_) {}
+    });
+    return res.redirect("/listings/new?error=min_photos");
+  }
+  
+  // Сохраняем имена файлов в JSON
+  const photos = files.map(file => file.filename);
+  const photosJson = JSON.stringify(photos);
+  
+  // Первое фото для обратной совместимости
+  const photo = photos[0];
+  
   await pool.query(
-    `INSERT INTO listings (title, description, price, address, owner_id, photo, rooms, housing_type, district, amenities, lat, lng)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `INSERT INTO listings (title, description, price, address, owner_id, photo, photos, rooms, housing_type, district, amenities, lat, lng)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       title,
       description,
@@ -432,6 +566,7 @@ app.post("/listings/new", upload.single("photo"), async (req, res) => {
       address,
       req.session.userId,
       photo,
+      photosJson,
       rooms || null,
       housing_type || null,
       district || null,
@@ -514,11 +649,11 @@ app.get("/listings/:id/edit", async (req, res) => {
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
-  res.render("listing_edit", { listing, unreadCount: res.locals.unreadCount });
+  res.render("listing_edit", { listing, unreadCount: res.locals.unreadCount, error: req.query.error });
 });
 
 // Обработка редактирования объявления
-app.post("/listings/:id/edit", upload.single("photo"), async (req, res) => {
+app.post("/listings/:id/edit", uploadMultiple, async (req, res) => {
   const id = req.params.id;
   const {
     title,
@@ -537,15 +672,44 @@ app.post("/listings/:id/edit", upload.single("photo"), async (req, res) => {
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
+  
   let photo = listing.photo;
-  if (req.file) {
-    photo = req.file.filename;
-    // удалить старое фото
-    if (listing.photo) {
+  let photosJson = listing.photos;
+  
+  // Если загружены новые фото
+  const files = req.files || [];
+  if (files.length > 0) {
+    // Проверяем минимум 3 фото
+    if (files.length < 3) {
+      // Удаляем загруженные файлы если их меньше 3
+      files.forEach(file => {
+        try {
+          fs.unlinkSync(path.join(uploadDir, file.filename));
+        } catch (_) {}
+      });
+      return res.redirect(`/listings/${id}/edit?error=min_photos`);
+    }
+    
+    // Удаляем старые фото
+    if (listing.photos) {
+      try {
+        const oldPhotos = JSON.parse(listing.photos);
+        oldPhotos.forEach(oldPhoto => {
+          const oldPath = path.join(uploadDir, oldPhoto);
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        });
+      } catch (_) {}
+    } else if (listing.photo) {
       const oldPath = path.join(uploadDir, listing.photo);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
+    
+    // Сохраняем новые фото
+    const photos = files.map(file => file.filename);
+    photosJson = JSON.stringify(photos);
+    photo = photos[0]; // первое фото для обратной совместимости
   }
+  
   // собрать amenities
   let amenities = req.body.amenities;
   if (Array.isArray(amenities)) {
@@ -564,19 +728,21 @@ app.post("/listings/:id/edit", upload.single("photo"), async (req, res) => {
        price = $3,
        address = $4,
        photo = $5,
-       rooms = $6,
-       housing_type = $7,
-       district = $8,
-       amenities = $9,
-       lat = $10,
-       lng = $11
-     WHERE id = $12`,
+       photos = $6,
+       rooms = $7,
+       housing_type = $8,
+       district = $9,
+       amenities = $10,
+       lat = $11,
+       lng = $12
+     WHERE id = $13`,
     [
       title,
       description,
       price,
       address,
       photo,
+      photosJson,
       rooms || null,
       housing_type || null,
       district || null,

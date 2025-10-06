@@ -17,6 +17,11 @@
   </nav>
   <div class="container">
     <h1>Редактировать объявление</h1>
+    <% if (typeof error !== 'undefined' && error === 'min_photos') { %>
+      <div class="error" style="color: #c62828; background: #ffebee; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        Необходимо загрузить минимум 3 фотографии для объявления
+      </div>
+    <% } %>
     <form method="POST" action="/listings/<%= listing.id %>/edit" enctype="multipart/form-data">
       <label>Заголовок:<br><input type="text" name="title" value="<%= listing.title %>" required></label><br><br>
       <label>Описание:<br><textarea name="description" required><%= listing.description %></textarea></label><br><br>
@@ -57,9 +62,29 @@
       </div>
       <div id="ymap" data-yakey="d3d8195a-77c2-4c5b-903a-5876e929c27b" style="height:300px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
       <% if (listing.photo) { %>
-        <div style="margin-bottom:12px;"><img src="/images/<%= listing.photo %>" alt="Фото" style="max-width:200px;"></div>
+        <div style="margin-bottom:12px;">
+          <p><strong>Текущие фото:</strong></p>
+          <% 
+            let photos = [];
+            if (listing.photos) {
+              try {
+                photos = JSON.parse(listing.photos);
+              } catch (e) {
+                photos = [listing.photo];
+              }
+            } else {
+              photos = [listing.photo];
+            }
+          %>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <% photos.forEach(function(photo, index) { %>
+              <img src="/images/<%= photo %>" alt="Фото <%= index + 1 %>" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px;">
+            <% }) %>
+          </div>
+        </div>
       <% } %>
-      <label>Фото:<br><input type="file" name="photo" accept="image/*"></label><br><br>
+      <label>Новые фото (минимум 3, заменят текущие):<br><input type="file" name="photos" accept="image/*" multiple></label><br>
+      <small style="color: #666;">Если не выберете новые фото, текущие останутся</small><br><br>
       <button type="submit">Сохранить</button>
     </form>
     <p><a href="/listings/<%= listing.id %>">Назад к объявлению</a></p>

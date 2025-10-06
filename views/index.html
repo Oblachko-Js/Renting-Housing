@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <title>Аренда жилья</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .listing-item:hover {
+      background-color: #f8f9fa !important;
+      border-color: #007bff !important;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -62,22 +68,49 @@
 
     <div id="map" style="height:360px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
 
-    <ul class="listing-list">
+    <ul class="listing-list" id="listings-container">
+      <% 
+        const housingMap = { apartment:'Квартира', house:'Дом', room:'Комната', studio:'Студия' };
+        const amenityMap = { wifi:'Wi‑Fi', parking:'Парковка', pets:'Можно с животными', balcony:'Балкон', washing:'Стиральная машина' };
+      %>
       <% listings.forEach(function(listing) { %>
-        <li class="listing-item">
-          <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
-          <span><%= listing.price %> руб. — <%= listing.address %></span>
-          <% if (listing.rooms) { %><div>Комнат: <%= listing.rooms %></div><% } %>
-          <% if (listing.housing_type) { %><div>Тип: <%= listing.housing_type %></div><% } %>
-          <% if (listing.district) { %><div>Район: <%= listing.district %></div><% } %>
-          <% if (listing.amenities) { %><div>Удобства: <%= listing.amenities %></div><% } %>
+        <li class="listing-item" data-listing-id="<%= listing.id %>" style="display: flex; gap: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;" onclick="window.location.href='/listings/<%= listing.id %>'">
+          <% if (listing.photo) { %>
+            <div style="flex-shrink: 0;">
+              <img src="/images/<%= listing.photo %>" alt="<%= listing.title %>" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
+            </div>
+          <% } %>
+          <div style="flex: 1;">
+            <strong><%= listing.title %></strong><br>
+            <span><%= listing.price %> руб. — <%= listing.address %></span>
+            <% if (listing.rooms) { %><div>Комнат: <%= listing.rooms %></div><% } %>
+            <% if (listing.housing_type) { %><div>Тип: <%= housingMap[listing.housing_type] || listing.housing_type %></div><% } %>
+            <% if (listing.district) { %><div>Район: <%= listing.district %></div><% } %>
+            <% if (listing.amenities) { 
+              const ams = listing.amenities.split(',').map(function(s){ return (s||'').trim(); }).filter(function(x){ return x; });
+              const amenRu = ams.map(function(a){ return amenityMap[a] || a; });
+            %>
+              <div>Удобства: <%= amenRu.join(', ') %></div>
+            <% } %>
+          </div>
         </li>
       <% }) %>
     </ul>
+    
+    <% if (hasMore) { %>
+      <div style="text-align: center; margin: 20px 0;">
+        <button id="load-more-btn" class="btn" style="padding: 12px 24px; font-size: 16px;">
+          Загрузить ещё
+        </button>
+      </div>
+    <% } %>
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
-    window.LISTING_POINTS = <%- JSON.stringify(listings.map(l => ({ id: l.id, title: l.title, lat: l.lat, lng: l.lng }))) %>;
+    window.LISTING_POINTS = <%- JSON.stringify(allListings.map(l => ({ id: l.id, title: l.title, lat: l.lat, lng: l.lng }))) %>;
+    window.CURRENT_PAGE = 1;
+    window.HAS_MORE = <%= hasMore ? 'true' : 'false' %>;
+    window.SEARCH_PARAMS = new URLSearchParams(window.location.search);
   </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/main.js"></script>
@@ -85,15 +118,116 @@
   <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=b9e568fc-f1b8-4905-a931-d77573bb7c0c"></script>
   <script>
     (function(){
-      if (!window.ymaps) return;
-      ymaps.ready(function(){
-        var points = (window.LISTING_POINTS || []).filter(function(p){ return typeof p.lat === 'number' && typeof p.lng === 'number'; });
-        var center = points.length ? [points[0].lat, points[0].lng] : [55.751244, 37.618423];
-        var map = new ymaps.Map('map', { center: center, zoom: points.length ? 11 : 10 });
-        points.forEach(function(p){
-          var pm = new ymaps.Placemark([p.lat, p.lng], { balloonContent: `<a href='/listings/${p.id}'>${p.title}</a>` });
-          map.geoObjects.add(pm);
+      let map = null;
+      
+      function initMap() {
+        if (!window.ymaps || map) return;
+        ymaps.ready(function(){
+          var points = (window.LISTING_POINTS || []).filter(function(p){ return typeof p.lat === 'number' && typeof p.lng === 'number'; });
+          var center = points.length ? [points[0].lat, points[0].lng] : [55.751244, 37.618423];
+          map = new ymaps.Map('map', { center: center, zoom: points.length ? 11 : 10 });
+          points.forEach(function(p){
+            var pm = new ymaps.Placemark([p.lat, p.lng], { balloonContent: `<a href='/listings/${p.id}'>${p.title}</a>` });
+            map.geoObjects.add(pm);
+          });
         });
+      }
+      
+      function loadMoreListings() {
+        const btn = document.getElementById('load-more-btn');
+        if (!btn || !window.HAS_MORE) return;
+        
+        btn.disabled = true;
+        btn.textContent = 'Загрузка...';
+        
+        const params = new URLSearchParams(window.SEARCH_PARAMS);
+        params.set('page', window.CURRENT_PAGE + 1);
+        params.set('limit', 3);
+        
+        fetch('/api/listings?' + params.toString())
+          .then(response => response.json())
+          .then(data => {
+            if (data.listings && data.listings.length > 0) {
+              // Добавляем новые объявления в список
+              const container = document.getElementById('listings-container');
+              const housingMap = { apartment:'Квартира', house:'Дом', room:'Комната', studio:'Студия' };
+              const amenityMap = { wifi:'Wi‑Fi', parking:'Парковка', pets:'Можно с животными', balcony:'Балкон', washing:'Стиральная машина' };
+              
+              data.listings.forEach(function(listing) {
+                const li = document.createElement('li');
+                li.className = 'listing-item';
+                li.setAttribute('data-listing-id', listing.id);
+                li.style.cssText = 'display: flex; gap: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;';
+                li.onclick = function() { window.location.href = '/listings/' + listing.id; };
+                
+                // Преобразуем удобства в русский
+                let amenitiesText = '';
+                let amenRu = [];
+                if (listing.amenities) {
+                  const ams = listing.amenities.split(',').map(function(s){ return (s||'').trim(); }).filter(function(x){ return x; });
+                  amenRu = ams.map(function(a){ return amenityMap[a] || a; });
+                  if (amenRu.length > 0) {
+                    amenitiesText = `<div>Удобства: ${amenRu.join(', ')}</div>`;
+                  }
+                }
+                
+                
+                // Формируем HTML с картинкой
+                let imageHtml = '';
+                if (listing.photo) {
+                  imageHtml = `
+                    <div style="flex-shrink: 0;">
+                      <img src="/images/${listing.photo}" alt="${listing.title}" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
+                    </div>
+                  `;
+                }
+                
+                li.innerHTML = `
+                  ${imageHtml}
+                  <div style="flex: 1;">
+                    <strong>${listing.title}</strong><br>
+                    <span>${listing.price} руб. — ${listing.address}</span>
+                    ${listing.rooms ? `<div>Комнат: ${listing.rooms}</div>` : ''}
+                    ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>` : ''}
+                    ${listing.district ? `<div>Район: ${listing.district}</div>` : ''}
+                    ${amenitiesText}
+                  </div>
+                `;
+                container.appendChild(li);
+              });
+              
+              // Карта уже показывает все объявления, обновлять её не нужно
+              
+              // Обновляем состояние
+              window.CURRENT_PAGE = data.currentPage;
+              window.HAS_MORE = data.hasMore;
+              
+              if (!data.hasMore) {
+                btn.style.display = 'none';
+              } else {
+                btn.disabled = false;
+                btn.textContent = 'Загрузить ещё';
+              }
+            } else {
+              btn.style.display = 'none';
+            }
+          })
+          .catch(error => {
+            console.error('Ошибка загрузки:', error);
+            btn.disabled = false;
+            btn.textContent = 'Загрузить ещё';
+          });
+      }
+      
+      // Инициализация карты
+      initMap();
+      
+      // Обработчик кнопки "Загрузить ещё"
+      document.addEventListener('DOMContentLoaded', function() {
+        const btn = document.getElementById('load-more-btn');
+        if (btn) {
+          btn.addEventListener('click', loadMoreListings);
+        }
       });
     })();
   </script>

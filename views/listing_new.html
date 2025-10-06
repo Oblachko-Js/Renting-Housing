@@ -21,6 +21,11 @@
   </nav>
   <div class="container">
     <h1>Новое объявление</h1>
+    <% if (typeof error !== 'undefined' && error === 'min_photos') { %>
+      <div class="error" style="color: #c62828; background: #ffebee; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        Необходимо загрузить минимум 3 фотографии для объявления
+      </div>
+    <% } %>
     <form method="POST" action="/listings/new" enctype="multipart/form-data">
       <label>Заголовок:<br><input type="text" name="title" required></label><br><br>
       <label>Описание:<br><textarea name="description" required></textarea></label><br><br>
@@ -59,7 +64,8 @@
       </div>
       <div id="ymap" data-yakey="d3d8195a-77c2-4c5b-903a-5876e929c27b" style="height:300px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
 
-      <label>Фото:<br><input type="file" name="photo" accept="image/*"></label><br><br>
+      <label>Фото (минимум 3):<br><input type="file" name="photos" accept="image/*" multiple required></label><br>
+      <small style="color: #666;">Выберите минимум 3 фотографии для объявления</small><br><br>
       <button type="submit">Создать</button>
     </form>
     <p><a href="/">Назад к списку</a></p>
