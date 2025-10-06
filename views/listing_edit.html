@@ -63,7 +63,7 @@
       <div id="ymap" data-yakey="d3d8195a-77c2-4c5b-903a-5876e929c27b" style="height:300px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
       <% if (listing.photo) { %>
         <div style="margin-bottom:12px;">
-          <p><strong>Текущие фото:</strong></p>
+          <p><strong>Текущие фото:</strong> <small id="photos-count-note" style="color:#666"></small></p>
           <% 
             let photos = [];
             if (listing.photos) {
@@ -76,17 +76,163 @@
               photos = [listing.photo];
             }
           %>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <input type="hidden" name="delete_photos" id="delete-photos-input">
+          <div id="delete-photos-multi" style="display:none;"></div>
+          <div id="photos-grid" style="display: flex; gap: 8px; flex-wrap: wrap;">
             <% photos.forEach(function(photo, index) { %>
-              <img src="/images/<%= photo %>" alt="Фото <%= index + 1 %>" style="width: 100px; height: 75px; object-fit: cover; border-radius: 4px;">
+              <div class="photo-tile existing" data-filename="<%= photo %>" style="position: relative; width: 120px; height: 90px; border-radius: 6px; overflow: hidden; background: #f0f4f8;">
+                <img src="/images/<%= photo %>" alt="Фото <%= index + 1 %>" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                <button type="button" class="remove-photo" title="Удалить" aria-label="Удалить" style="position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer;">✕</button>
+              </div>
             <% }) %>
+            <!-- Плитка добавления новых фото (append) -->
+            <label id="add-photo-tile" for="additional-photos-input" style="display:flex; align-items:center; justify-content:center; width: 120px; height: 90px; border: 2px dashed #b3d7f6; border-radius: 6px; color:#1976d2; cursor:pointer;">
+              + Добавить
+            </label>
+            <input id="additional-photos-input" type="file" name="additional_photos" accept="image/*" multiple style="display:none;">
           </div>
         </div>
       <% } %>
-      <label>Новые фото (минимум 3, заменят текущие):<br><input type="file" name="photos" accept="image/*" multiple></label><br>
-      <small style="color: #666;">Если не выберете новые фото, текущие останутся</small><br><br>
       <button type="submit">Сохранить</button>
     </form>
+    <script>
+      (function(){
+        const grid = document.getElementById('photos-grid');
+        const delInput = document.getElementById('delete-photos-input');
+        const delMulti = document.getElementById('delete-photos-multi');
+        const addInput = document.getElementById('additional-photos-input');
+        const addTile = document.getElementById('add-photo-tile');
+        const countNote = document.getElementById('photos-count-note');
+        const deletions = new Set();
+        const addedFiles = []; // список новых файлов (File)
+
+        function fileKey(file){ return [file.name, file.size, file.lastModified].join(':'); }
+
+        function getCurrentCount(){
+          const existing = grid ? grid.querySelectorAll('.photo-tile.existing') : [];
+          const existingCount = existing.length - deletions.size;
+          const newCount = addedFiles.length;
+          return existingCount + newCount;
+        }
+        function sync() {
+          delInput.value = Array.from(deletions).join(',');
+          delMulti.innerHTML = '';
+          deletions.forEach(function(fn){
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'delete_photos';
+            inp.value = fn;
+            delMulti.appendChild(inp);
+          });
+          if (countNote) countNote.textContent = 'Всего будет: ' + getCurrentCount() + ' (макс. 10)';
+          // Блокировка добавления при достижении лимита
+          if (addTile && addInput) {
+            const total = getCurrentCount();
+            if (total >= 10) {
+              addTile.style.opacity = '0.5';
+              addTile.style.cursor = 'not-allowed';
+              addTile.style.pointerEvents = 'none';
+              addInput.disabled = true;
+            } else {
+              addTile.style.opacity = '';
+              addTile.style.cursor = 'pointer';
+              addTile.style.pointerEvents = '';
+              addInput.disabled = false;
+            }
+          }
+        }
+        function ensureLimitOrWarn(extra){
+          if (getCurrentCount() + extra > 10) {
+            alert('Максимум 10 фото на объявление');
+            return false;
+          }
+          return true;
+        }
+        function rebuildAddInput(){
+          const dt = new DataTransfer();
+          addedFiles.forEach(f => dt.items.add(f));
+          addInput.files = dt.files;
+        }
+        function createNewTile(file){
+          const url = URL.createObjectURL(file);
+          const wrap = document.createElement('div');
+          wrap.className = 'photo-tile new';
+          wrap.style.cssText = 'position:relative;width:120px;height:90px;border-radius:6px;overflow:hidden;background:#f0f4f8;';
+          wrap.setAttribute('data-new-key', fileKey(file));
+          wrap.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;display:block;">\
+            <button type="button" class="remove-new-photo" title="Убрать" aria-label="Убрать" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;cursor:pointer;">✕</button>';
+          grid.insertBefore(wrap, document.getElementById('add-photo-tile'));
+        }
+
+        if (grid) {
+          grid.addEventListener('click', function(e){
+            const btnRemoveExisting = e.target.closest('.remove-photo');
+            if (btnRemoveExisting) {
+              const tile = btnRemoveExisting.closest('.photo-tile');
+              if (!tile || tile.classList.contains('new')) return;
+              const filename = tile.getAttribute('data-filename');
+              if (!filename) return;
+              if (deletions.has(filename)) {
+                deletions.delete(filename);
+                tile.style.opacity = '';
+                tile.style.filter = '';
+                btnRemoveExisting.textContent = '✕';
+                btnRemoveExisting.disabled = false;
+              } else {
+                deletions.add(filename);
+                tile.style.opacity = '0.4';
+                tile.style.filter = 'grayscale(100%)';
+                btnRemoveExisting.textContent = '—';
+                btnRemoveExisting.disabled = false;
+              }
+              sync();
+              return;
+            }
+            const btnRemoveNew = e.target.closest('.remove-new-photo');
+            if (btnRemoveNew) {
+              const tile = btnRemoveNew.closest('.photo-tile.new');
+              if (!tile) return;
+              const key = tile.getAttribute('data-new-key');
+              const idx = addedFiles.findIndex(f => fileKey(f) === key);
+              if (idx !== -1) {
+                addedFiles.splice(idx,1);
+                rebuildAddInput();
+              }
+              tile.remove();
+              sync();
+              return;
+            }
+          });
+        }
+
+        if (addInput) {
+          addInput.addEventListener('change', function(){
+            const files = Array.from(addInput.files || []);
+            // Сколько ещё можно добавить
+            const slots = 10 - getCurrentCount();
+            if (slots <= 0) {
+              alert('Достигнут максимум 10 фото — добавление невозможно.');
+              // Вернём инпут к текущему состоянию добавленных файлов
+              rebuildAddInput();
+              return;
+            }
+            const accepted = files.slice(0, slots);
+            const overflow = files.length - accepted.length;
+            if (overflow > 0) {
+              alert('Можно добавить только ' + slots + ' фото (макс. 10). Лишние будут проигнорированы.');
+            }
+            accepted.forEach(function(file){
+              addedFiles.push(file);
+              createNewTile(file);
+            });
+            // Всегда пересобираем FileList из актуального массива addedFiles
+            rebuildAddInput();
+            sync();
+          });
+        }
+        sync();
+      })();
+    </script>
     <p><a href="/listings/<%= listing.id %>">Назад к объявлению</a></p>
   </div>
   <!-- Яндекс.Карты: подставьте свой API-ключ в параметре apikey -->

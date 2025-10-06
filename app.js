@@ -121,6 +121,10 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 const uploadMultiple = multer({ storage }).array('photos', 10); // максимум 10 фото
+const uploadFields = multer({ storage }).fields([
+  { name: 'photos', maxCount: 10 },
+  { name: 'additional_photos', maxCount: 10 },
+]);
 
 // Главная страница
 
@@ -548,6 +552,15 @@ app.post("/listings/new", uploadMultiple, async (req, res) => {
     });
     return res.redirect("/listings/new?error=min_photos");
   }
+  if (files.length > 10) {
+    // Удаляем загруженные файлы если их больше лимита
+    files.forEach(file => {
+      try {
+        fs.unlinkSync(path.join(uploadDir, file.filename));
+      } catch (_) {}
+    });
+    return res.redirect("/listings/new?error=max_photos");
+  }
   
   // Сохраняем имена файлов в JSON
   const photos = files.map(file => file.filename);
@@ -653,7 +666,7 @@ app.get("/listings/:id/edit", async (req, res) => {
 });
 
 // Обработка редактирования объявления
-app.post("/listings/:id/edit", uploadMultiple, async (req, res) => {
+app.post("/listings/:id/edit", uploadFields, async (req, res) => {
   const id = req.params.id;
   const {
     title,
@@ -673,42 +686,60 @@ app.post("/listings/:id/edit", uploadMultiple, async (req, res) => {
     return res.send("Нет доступа");
   }
   
-  let photo = listing.photo;
-  let photosJson = listing.photos;
-  
-  // Если загружены новые фото
-  const files = req.files || [];
-  if (files.length > 0) {
-    // Проверяем минимум 3 фото
-    if (files.length < 3) {
-      // Удаляем загруженные файлы если их меньше 3
-      files.forEach(file => {
-        try {
-          fs.unlinkSync(path.join(uploadDir, file.filename));
-        } catch (_) {}
-      });
-      return res.redirect(`/listings/${id}/edit?error=min_photos`);
-    }
-    
-    // Удаляем старые фото
-    if (listing.photos) {
-      try {
-        const oldPhotos = JSON.parse(listing.photos);
-        oldPhotos.forEach(oldPhoto => {
-          const oldPath = path.join(uploadDir, oldPhoto);
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        });
-      } catch (_) {}
-    } else if (listing.photo) {
-      const oldPath = path.join(uploadDir, listing.photo);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    }
-    
-    // Сохраняем новые фото
-    const photos = files.map(file => file.filename);
-    photosJson = JSON.stringify(photos);
-    photo = photos[0]; // первое фото для обратной совместимости
+  // Текущие фото
+  let currentPhotos;
+  try {
+    currentPhotos = listing.photos ? JSON.parse(listing.photos) : (listing.photo ? [listing.photo] : []);
+  } catch (_) {
+    currentPhotos = listing.photo ? [listing.photo] : [];
   }
+
+  // Фото, помеченные к удалению (массив имён файлов)
+  let deleteList = req.body.delete_photos || [];
+  if (typeof deleteList === 'string') {
+    // Может приходить как "a.jpg,b.jpg"
+    deleteList = deleteList
+      .split(',')
+      .map(s => (s || '').trim())
+      .filter(Boolean);
+  }
+
+  // Новые загруженные фото (из полей photos и additional_photos)
+  const uploadedPhotos = [];
+  const filesPhotos = (req.files && req.files.photos) || [];
+  const filesAdditional = (req.files && req.files.additional_photos) || [];
+  filesPhotos.forEach(f => uploadedPhotos.push(f.filename));
+  filesAdditional.forEach(f => uploadedPhotos.push(f.filename));
+
+  // Формируем новый список, не удаляя файлы на диске до валидации
+  const remaining = currentPhotos.filter(fn => !deleteList.includes(fn));
+  const proposedPhotos = remaining.concat(uploadedPhotos);
+
+  if (proposedPhotos.length < 3) {
+    // Откатываем вновь загруженные файлы
+    uploadedPhotos.forEach(fn => {
+      try { fs.unlinkSync(path.join(uploadDir, fn)); } catch(_) {}
+    });
+    return res.redirect(`/listings/${id}/edit?error=min_photos`);
+  }
+  if (proposedPhotos.length > 10) {
+    uploadedPhotos.forEach(fn => {
+      try { fs.unlinkSync(path.join(uploadDir, fn)); } catch(_) {}
+    });
+    return res.redirect(`/listings/${id}/edit?error=max_photos`);
+  }
+
+  // После успешной валидации — удаляем отмеченные старые файлы
+  deleteList.forEach(fn => {
+    const p = path.join(uploadDir, fn);
+    if (fs.existsSync(p)) {
+      try { fs.unlinkSync(p); } catch(_) {}
+    }
+  });
+
+  // Значения для сохранения
+  const photo = proposedPhotos[0];
+  const photosJson = JSON.stringify(proposedPhotos);
   
   // собрать amenities
   let amenities = req.body.amenities;
