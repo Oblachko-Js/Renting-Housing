@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Избранное</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .listing-item:hover {
+      background-color: #f8f9fa !important;
+      border-color: #007bff !important;
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -31,11 +37,31 @@
     <% if (!listings || listings.length === 0) { %>
       <p>У вас пока нет избранных объявлений.</p>
     <% } else { %>
-      <ul class="listing-list">
+      <ul class="listing-list" id="favorites-container">
+        <% 
+          const housingMap = { apartment:'Квартира', house:'Дом', room:'Комната', studio:'Студия' };
+          const amenityMap = { wifi:'Wi‑Fi', parking:'Парковка', pets:'Можно с животными', balcony:'Балкон', washing:'Стиральная машина' };
+        %>
         <% listings.forEach(function(listing) { %>
-          <li class="listing-item">
-            <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
-            <span><%= listing.price %> руб. — <%= listing.address %></span>
+          <li class="listing-item" data-listing-id="<%= listing.id %>" style="display: flex; gap: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;" onclick="window.location.href='/listings/<%= listing.id %>'">
+            <% if (listing.photo) { %>
+              <div style="flex-shrink: 0;">
+                <img src="/images/<%= listing.photo %>" alt="<%= listing.title %>" style="width: 120px; height: 90px; object-fit: cover; border-radius: 6px;">
+              </div>
+            <% } %>
+            <div style="flex: 1;">
+              <strong><%= listing.title %></strong><br>
+              <span><%= listing.price %> руб./мес. — <%= listing.address %></span>
+              <% if (listing.rooms) { %><div>Комнат: <%= listing.rooms %></div><% } %>
+              <% if (listing.housing_type) { %><div>Тип: <%= housingMap[listing.housing_type] || listing.housing_type %></div><% } %>
+              <% if (listing.district) { %><div>Район: <%= listing.district %></div><% } %>
+              <% if (listing.amenities) { 
+                const ams = listing.amenities.split(',').map(function(s){ return (s||'').trim(); }).filter(function(x){ return x; });
+                const amenRu = ams.map(function(a){ return amenityMap[a] || a; });
+              %>
+                <div>Удобства: <%= amenRu.join(', ') %></div>
+              <% } %>
+            </div>
           </li>
         <% }) %>
       </ul>

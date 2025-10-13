@@ -86,7 +86,7 @@
           <% } %>
           <div style="flex: 1;">
             <strong><%= listing.title %></strong><br>
-            <span><%= listing.price %> руб. — <%= listing.address %></span>
+            <span><%= Math.round(Number(listing.price || 0)) %> руб./мес. — <%= listing.address %></span>
             <% if (listing.rooms) { %><div>Комнат: <%= listing.rooms %></div><% } %>
             <% if (listing.housing_type) { %><div>Тип: <%= housingMap[listing.housing_type] || listing.housing_type %></div><% } %>
             <% if (listing.district) { %><div>Район: <%= listing.district %></div><% } %>
@@ -111,7 +111,7 @@
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
-    window.LISTING_POINTS = <%- JSON.stringify(allListings.map(l => ({ id: l.id, title: l.title, lat: l.lat, lng: l.lng }))) %>;
+    window.LISTING_POINTS = <%- JSON.stringify(allListings.map(l => ({ id: l.id, title: l.title, lat: l.lat, lng: l.lng, photo: l.photo, price: l.price }))) %>;
     window.CURRENT_PAGE = 1;
     window.HAS_MORE = <%= hasMore ? 'true' : 'false' %>;
     window.SEARCH_PARAMS = new URLSearchParams(window.location.search);
@@ -141,7 +141,24 @@
           var center = points.length ? [points[0].lat, points[0].lng] : [55.751244, 37.618423];
           map = new ymaps.Map('map', { center: center, zoom: points.length ? 11 : 10 });
           points.forEach(function(p){
-            var pm = new ymaps.Placemark([p.lat, p.lng], { balloonContent: `<a href='/listings/${p.id}'>${p.title}</a>` });
+            var img = p.photo ? `/images/${p.photo}` : null;
+            var priceText = '';
+            if (p && p.price != null && p.price !== '') {
+              var pn = Number(p.price);
+              if (!isNaN(pn)) priceText = `${Math.round(pn)} руб./мес.`;
+            }
+            var html = img
+              ? `<div style="display:flex;gap:8px;align-items:center;min-width:200px;">
+                   <a href='/listings/${p.id}' style='display:block;width:90px;height:68px;overflow:hidden;border-radius:6px;flex-shrink:0;'>
+                     <img src='${img}' alt='${p.title}' style='width:100%;height:100%;object-fit:cover;display:block;'>
+                   </a>
+                   <div style='max-width:220px;'>
+                     <a href='/listings/${p.id}' style='font-weight:600;text-decoration:none;color:#1976d2;'>${p.title}</a>
+                     ${priceText ? `<div style='color:#2e7d32;font-weight:600;margin-top:2px;'>${priceText}</div>` : ''}
+                   </div>
+                 </div>`
+              : `<div style='max-width:220px;'><a href='/listings/${p.id}'>${p.title}</a>${priceText ? `<div style='color:#2e7d32;font-weight:600;margin-top:2px;'>${priceText}</div>` : ''}</div>`;
+            var pm = new ymaps.Placemark([p.lat, p.lng], { balloonContent: html });
             map.geoObjects.add(pm);
           });
         });
@@ -207,11 +224,12 @@
                   `;
                 }
                 
+                const priceDisplay = (function(){ const n=Number(listing.price); return isNaN(n)? '' : `${Math.round(n)} руб./мес.`; })();
                 li.innerHTML = `
                   ${imageHtml}
                   <div style="flex: 1;">
                     <strong>${listing.title}</strong><br>
-                    <span>${listing.price} руб. — ${listing.address}</span>
+                    <span>${priceDisplay} — ${listing.address}</span>
                     ${listing.rooms ? `<div>Комнат: ${listing.rooms}</div>` : ''}
                     ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>` : ''}
                     ${listing.district ? `<div>Район: ${listing.district}</div>` : ''}

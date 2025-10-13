@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Заказы</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .listing-item:hover { background-color: #f8f9fa !important; border-color: #007bff !important; }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -24,15 +27,20 @@
     <% if (!bookings || bookings.length === 0) { %>
       <p>У вас пока нет заказов.</p>
     <% } else { %>
+      <% const statusMap = { pending: 'В ожидании', approved: 'Подтверждено', rejected: 'Отклонено' }; %>
       <ul class="listing-list">
         <% bookings.forEach(function(b) { %>
-          <li class="listing-item">
-            <strong><%= b.title %></strong> — <%= b.address %><br>
-            Даты: <%= new Date(b.start_date).toLocaleDateString('ru-RU') %> — <%= new Date(b.end_date).toLocaleDateString('ru-RU') %><br>
-            Статус: <%= b.status %> | Арендатор: <%= b.tenant_name %>
+          <li class="listing-item" style="margin-bottom: 12px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer;" onclick="window.location.href='/listings/<%= b.listing_id %>'">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div><strong><%= b.title %></strong> — <%= b.address %></div>
+              <div>Даты: <%= new Date(b.start_date).toLocaleDateString('ru-RU') %> — <%= new Date(b.end_date).toLocaleDateString('ru-RU') %></div>
+              <div>Статус: <%= statusMap[b.status] || b.status %> | Арендатор: <%= b.tenant_name %></div>
+            </div>
             <% if (b.status === 'pending') { %>
-              <form method="POST" action="/bookings/<%= b.id %>/approve" style="display:inline;margin-left:10px;"><button class="btn" type="submit">Подтвердить</button></form>
-              <form method="POST" action="/bookings/<%= b.id %>/reject" style="display:inline;margin-left:6px;"><button class="btn" type="submit" style="background:#c62828;">Отклонить</button></form>
+              <div style="margin-top:8px;">
+                <form method="POST" action="/bookings/<%= b.id %>/approve" style="display:inline;margin-right:6px;"><button class="btn" type="submit">Подтвердить</button></form>
+                <form method="POST" action="/bookings/<%= b.id %>/reject" style="display:inline;"><button class="btn" type="submit" style="background:#c62828;">Отклонить</button></form>
+              </div>
             <% } %>
           </li>
         <% }) %>
