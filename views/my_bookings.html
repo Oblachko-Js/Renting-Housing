@@ -2,17 +2,21 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Мои бронирования</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <nav class="navbar">
-    <a href="/">Главная</a>
-    <a href="/profile">Личный кабинет</a>
-    <a href="/chats" class="chats-link">Чаты</a>
-    <a href="/favorites">Избранное</a>
-    <a href="/my-bookings">Мои бронирования</a>
-    <span class="navbar-right"><a href="/logout">Выйти</a></span>
+    <button class="burger" type="button" aria-label="Меню" onclick="(function(){var el=document.querySelector('.nav-links'); if(el){ el.classList.toggle('show'); }})()">☰</button>
+    <div class="nav-links">
+      <a href="/">Главная</a>
+      <a href="/profile">Личный кабинет</a>
+      <a href="/chats" class="chats-link">Чаты</a>
+      <a href="/favorites">Избранное</a>
+      <a href="/my-bookings">Мои бронирования</a>
+      <span class="navbar-right"><a href="/logout">Выйти</a></span>
+    </div>
   </nav>
   <div class="container">
     <h1>Мои бронирования</h1>

@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Аренда жилья</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
@@ -13,29 +14,32 @@
 </head>
 <body>
   <nav class="navbar">
-    <a href="/">Главная</a>
-    <% if (user) { %>
-      <a href="/profile">Личный кабинет</a>
-      <% if (user.role === 'landlord') { %>
-        <a href="/listings/new">Новое объявление</a>
+    <button class="burger" type="button" aria-label="Меню" onclick="(function(){var el=document.querySelector('.nav-links'); if(el){ el.classList.toggle('show'); }})()">☰</button>
+    <div class="nav-links">
+      <a href="/">Главная</a>
+      <% if (user) { %>
+        <a href="/profile">Личный кабинет</a>
+        <% if (user.role === 'landlord') { %>
+          <a href="/listings/new">Новое объявление</a>
+        <% } %>
+        <a href="/chats" class="chats-link">Чаты</a>
+        <a href="/favorites">Избранное</a>
+        <% if (user && user.role === 'tenant') { %>
+          <a href="/my-bookings">Мои бронирования</a>
+        <% } %>
+        <% if (user && user.role === 'landlord') { %>
+          <a href="/orders">Заказы</a>
+        <% } %>
+        <span class="navbar-right">
+          <a href="/logout">Выйти</a>
+        </span>
+      <% } else { %>
+        <span class="navbar-right">
+          <a href="/login">Вход</a>
+          <a href="/register">Регистрация</a>
+        </span>
       <% } %>
-      <a href="/chats" class="chats-link">Чаты</a>
-      <a href="/favorites">Избранное</a>
-      <% if (user && user.role === 'tenant') { %>
-        <a href="/my-bookings">Мои бронирования</a>
-      <% } %>
-      <% if (user && user.role === 'landlord') { %>
-        <a href="/orders">Заказы</a>
-      <% } %>
-      <span class="navbar-right">
-        <a href="/logout">Выйти</a>
-      </span>
-    <% } else { %>
-      <span class="navbar-right">
-        <a href="/login">Вход</a>
-        <a href="/register">Регистрация</a>
-      </span>
-    <% } %>
+    </div>
   </nav>
   <div class="container">
     <h1>Объявления</h1>
@@ -188,48 +192,4 @@
                     <strong>${listing.title}</strong><br>
                     <span>${listing.price} руб. — ${listing.address}</span>
                     ${listing.rooms ? `<div>Комнат: ${listing.rooms}</div>` : ''}
-                    ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>` : ''}
-                    ${listing.district ? `<div>Район: ${listing.district}</div>` : ''}
-                    ${amenitiesText}
-                  </div>
-                `;
-                container.appendChild(li);
-              });
-              
-              // Карта уже показывает все объявления, обновлять её не нужно
-              
-              // Обновляем состояние
-              window.CURRENT_PAGE = data.currentPage;
-              window.HAS_MORE = data.hasMore;
-              
-              if (!data.hasMore) {
-                btn.style.display = 'none';
-              } else {
-                btn.disabled = false;
-                btn.textContent = 'Загрузить ещё';
-              }
-            } else {
-              btn.style.display = 'none';
-            }
-          })
-          .catch(error => {
-            console.error('Ошибка загрузки:', error);
-            btn.disabled = false;
-            btn.textContent = 'Загрузить ещё';
-          });
-      }
-      
-      // Инициализация карты
-      initMap();
-      
-      // Обработчик кнопки "Загрузить ещё"
-      document.addEventListener('DOMContentLoaded', function() {
-        const btn = document.getElementById('load-more-btn');
-        if (btn) {
-          btn.addEventListener('click', loadMoreListings);
-        }
-      });
-    })();
-  </script>
-</body>
-</html> 
+                    ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>`
