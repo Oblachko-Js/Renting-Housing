@@ -682,7 +682,7 @@ hr {
   .search-form { display: flex; flex-direction: column; gap: 8px !important; align-items: stretch !important; }
   .search-form > * { flex: 1 1 auto !important; min-width: 0 !important; }
   .search-form fieldset { min-width: 0 !important; }
-  #map { height: 240px !important; }
+  #map { height: 240px; }
   .listing-item { flex-direction: row; align-items: center; gap: 10px !important; }
   .listing-item img { width: 36vw !important; height: 27vw !important; max-width: 160px; max-height: 120px; }
   .listing-item strong { display: inline-block; margin-bottom: 2px; }
@@ -719,3 +719,7 @@ hr {
   .navbar .navbar-right { margin-left: 0; padding-right: 0; }
   .navbar a { line-height: 40px; padding: 0 8px; font-size: 15px; width: 100%; }
 }
+
+/* Ensure right-aligned logout inside nav-links on desktop */
+.navbar .nav-links { display: flex; gap: 18px; align-items: center; flex: 1; }
+.navbar .navbar-right { margin-left: auto; display: flex; gap: 18px; }

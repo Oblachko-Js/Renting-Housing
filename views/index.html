@@ -119,11 +119,21 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/main.js"></script>
   <!-- Яндекс.Карты: подставьте свой API-ключ -->
-  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=b9e568fc-f1b8-4905-a931-d77573bb7c0c"></script>
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=d3d8195a-77c2-4c5b-903a-5876e929c27b"></script>
   <script>
     (function(){
       let map = null;
-      
+      const mapEl = document.getElementById('map');
+
+      function renderStaticMap(points){
+        if (!mapEl) return;
+        const def = { lat:55.751244, lng:37.618423 };
+        const p = (points||[]).find(pt => typeof pt.lat==='number' && typeof pt.lng==='number') || { lat:def.lat, lng:def.lng, id:null, title:'' };
+        const sizeW = Math.min((mapEl.clientWidth||600), 650);
+        const url = 'https://static-maps.yandex.ru/1.x/?l=map&z=11&size='+sizeW+',360&ll='+p.lng+','+p.lat+(p.id?('&pt='+p.lng+','+p.lat+',pm2rdm'):'');
+        mapEl.innerHTML = '<img src="'+url+'" alt="Карта" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">';
+      }
+
       function initMap() {
         if (!window.ymaps || map) return;
         ymaps.ready(function(){
@@ -136,7 +146,21 @@
           });
         });
       }
-      
+
+      // Try init or fallback
+      if (window.ymaps) {
+        initMap();
+      } else {
+        // wait a bit for the script to load, then fallback
+        setTimeout(function(){
+          if (window.ymaps) {
+            initMap();
+          } else {
+            renderStaticMap(window.LISTING_POINTS || []);
+          }
+        }, 1500);
+      }
+
       function loadMoreListings() {
         const btn = document.getElementById('load-more-btn');
         if (!btn || !window.HAS_MORE) return;
@@ -164,7 +188,6 @@
                 li.style.cssText = 'display: flex; gap: 12px; margin-bottom: 16px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;';
                 li.onclick = function() { window.location.href = '/listings/' + listing.id; };
                 
-                // Преобразуем удобства в русский
                 let amenitiesText = '';
                 let amenRu = [];
                 if (listing.amenities) {
@@ -175,8 +198,6 @@
                   }
                 }
                 
-                
-                // Формируем HTML с картинкой
                 let imageHtml = '';
                 if (listing.photo) {
                   imageHtml = `
@@ -192,4 +213,41 @@
                     <strong>${listing.title}</strong><br>
                     <span>${listing.price} руб. — ${listing.address}</span>
                     ${listing.rooms ? `<div>Комнат: ${listing.rooms}</div>` : ''}
-                    ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>`
+                    ${listing.housing_type ? `<div>Тип: ${housingMap[listing.housing_type] || listing.housing_type}</div>` : ''}
+                    ${listing.district ? `<div>Район: ${listing.district}</div>` : ''}
+                    ${amenitiesText}
+                  </div>
+                `;
+                container.appendChild(li);
+              });
+              
+              // Обновляем состояние
+              window.CURRENT_PAGE = data.currentPage;
+              window.HAS_MORE = data.hasMore;
+              
+              if (!data.hasMore) {
+                btn.style.display = 'none';
+              } else {
+                btn.disabled = false;
+                btn.textContent = 'Загрузить ещё';
+              }
+            } else {
+              btn.style.display = 'none';
+            }
+          })
+          .catch(error => {
+            console.error('Ошибка загрузки:', error);
+            btn.disabled = false;
+            btn.textContent = 'Загрузить ещё';
+          });
+      }
+      
+      // Обработчик кнопки "Загрузить ещё"
+      document.addEventListener('DOMContentLoaded', function() {
+        const btn = document.getElementById('load-more-btn');
+        if (btn) {
+          btn.addEventListener('click', loadMoreListings);
+        }
+      });
+    })();
+  </script>

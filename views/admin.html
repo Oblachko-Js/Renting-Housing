@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Админ панель</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-container { margin: 0; min-height:100vh; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.07); padding:16px; }
+    .admin-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .admin-grid { display:grid; grid-template-columns: 260px 1fr; gap:16px; margin-top:16px; }
+    .admin-sidebar { border:1px solid #e0e0e0; border-radius:8px; padding:10px; max-height:70vh; overflow:auto; }
+    .admin-main { border:1px solid #e0e0e0; border-radius:8px; padding:10px; overflow:auto; }
+    .table-list { list-style:none; padding:0; margin:0; }
+    .table-list li { padding:8px 10px; border-radius:6px; cursor:pointer; }
+    .table-list li:hover, .table-list li.active { background:#f0f4f8; }
+    table { width:100%; border-collapse: collapse; table-layout: auto; }
+    th, td { border:1px solid #e0e0e0; padding:8px 10px; font-size:14px; min-width: 160px; }
+    th { background:#f7fafd; text-align:left; }
+    .row-actions { display:flex; gap:6px; }
+    .form-inline { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin:10px 0; }
+    .form-inline label { display:flex; flex-direction:column; font-size:12px; min-width: 160px; }
+    td input { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 14px; }
+    @media (max-width: 800px){ .admin-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <div class="admin-header">
+      <h1 style="margin:0;">Админ панель</h1>
+      <form method="POST" action="/admin/logout"><button class="btn" type="submit">Выйти</button></form>
+    </div>
+    <div class="admin-grid">
+      <aside class="admin-sidebar">
+        <h3 style="margin-top:0;">Таблицы</h3>
+        <ul id="tables" class="table-list"></ul>
+      </aside>
+      <main class="admin-main">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <h3 id="table-title" style="margin:0;">Выберите таблицу</h3>
+          <button id="reload" class="btn" type="button" style="display:none;">Обновить</button>
+        </div>
+        <div id="insert-form-wrap" style="display:none;">
+          <h4>Добавить запись</h4>
+          <form id="insert-form" class="form-inline"></form>
+          <button id="insert-btn" class="btn" type="button">Добавить</button>
+        </div>
+        <div style="overflow:auto;">
+          <table id="data-table" style="margin-top:10px; display:none;"></table>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script>
+    (function(){
+      const tablesEl = document.getElementById('tables');
+      const titleEl = document.getElementById('table-title');
+      const reloadBtn = document.getElementById('reload');
+      const tableEl = document.getElementById('data-table');
+      const insertWrap = document.getElementById('insert-form-wrap');
+      const insertForm = document.getElementById('insert-form');
+      const insertBtn = document.getElementById('insert-btn');
+      let currentTable = null;
+      let currentRows = [];
+
+      function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+
+      function renderRows(rows){
+        if (!rows || !rows.length) { tableEl.style.display='none'; tableEl.innerHTML=''; return; }
+        const cols = Object.keys(rows[0]);
+        tableEl.style.display='table';
+        tableEl.innerHTML = '';
+        const thead = document.createElement('thead');
+        const trh = document.createElement('tr');
+        cols.forEach(c=>{ const th=document.createElement('th'); th.textContent=c; trh.appendChild(th); });
+        const thAct = document.createElement('th'); thAct.textContent='Действия'; trh.appendChild(thAct);
+        thead.appendChild(trh);
+        const tbody = document.createElement('tbody');
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
+          cols.forEach(c=>{
+            const td=document.createElement('td');
+            const inp=document.createElement('input');
+            inp.type='text'; inp.value = r[c] == null ? '' : r[c]; inp.dataset.col = c; inp.style.width='100%';
+            td.appendChild(inp); tr.appendChild(td);
+          });
+          const tdAct=document.createElement('td'); tdAct.className='row-actions';
+          const save=document.createElement('button'); save.className='btn'; save.type='button'; save.textContent='Сохранить';
+          save.onclick = async ()=>{
+            const payload = { id: r.id };
+            tr.querySelectorAll('input').forEach(i=>{ payload[i.dataset.col] = i.value; });
+            const resp = await fetch(`/admin/api/table/${encodeURIComponent(currentTable)}/update`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            if (!resp.ok) return alert('Ошибка сохранения');
+            await loadRows();
+          };
+          const del=document.createElement('button'); del.className='btn'; del.type='button'; del.textContent='Удалить'; del.style.background='#c62828';
+          del.onclick = async ()=>{
+            if (!confirm('Удалить запись?')) return;
+            const resp = await fetch(`/admin/api/table/${encodeURIComponent(currentTable)}/delete`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: r.id }) });
+            if (!resp.ok) return alert('Ошибка удаления');
+            await loadRows();
+          };
+          tdAct.appendChild(save); tdAct.appendChild(del); tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+        });
+        tableEl.appendChild(thead); tableEl.appendChild(tbody);
+
+        // Build insert form fields from columns (exclude id)
+        insertWrap.style.display = 'block';
+        insertForm.innerHTML='';
+        cols.filter(c=>c !== 'id').forEach(c=>{
+          const lab=document.createElement('label'); lab.textContent=c;
+          const inp=document.createElement('input'); inp.type='text'; inp.name=c; inp.placeholder=c; lab.appendChild(inp);
+          insertForm.appendChild(lab);
+        });
+      }
+
+      async function loadTables(){
+        const r = await fetch('/admin/api/tables');
+        const list = await r.json();
+        tablesEl.innerHTML='';
+        list.forEach(name => {
+          const li=document.createElement('li'); li.textContent = name; li.onclick = ()=> selectTable(name);
+          if (name === currentTable) li.classList.add('active');
+          tablesEl.appendChild(li);
+        });
+      }
+      async function loadRows(){
+        if (!currentTable) return;
+        titleEl.textContent = 'Таблица: ' + currentTable;
+        reloadBtn.style.display = 'inline-block';
+        const r = await fetch(`/admin/api/table/${encodeURIComponent(currentTable)}?limit=100`);
+        const j = await r.json();
+        currentRows = j.rows || [];
+        renderRows(currentRows);
+      }
+      function selectTable(name){ currentTable = name; loadRows(); loadTables(); }
+      reloadBtn.onclick = loadRows;
+      insertBtn.onclick = async ()=>{
+        if (!currentTable) return;
+        const data = {};
+        insertForm.querySelectorAll('input').forEach(inp => { data[inp.name] = inp.value; });
+        const resp = await fetch(`/admin/api/table/${encodeURIComponent(currentTable)}/insert`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        if (!resp.ok) return alert('Ошибка добавления');
+        insertForm.reset();
+        await loadRows();
+      };
+
+      loadTables();
+    })();
+  </script>
+</body>
+</html>
