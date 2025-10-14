@@ -138,9 +138,7 @@
       <div class="booking-section">
         <h2 style="margin-top: 0; margin-bottom: 16px; color: #333;">Выберите даты для бронирования</h2>
         <div class="calendar" id="calendar"></div>
-        <div class="legend">
-          <span>Свободно</span>
-          <span>Занято</span>
+        <div class="legend">          
         </div>
         <form id="booking-form" method="POST" action="/bookings/create">
           <input type="hidden" name="listing_id" value="<%= listing.id %>">
@@ -155,6 +153,7 @@
         (function(){
           const listingId = <%= listing.id %>;
           let busy = [];
+            let pending = [];
           let start = null, end = null;
           function buildCalendar(root, date){
             root.innerHTML = '';
@@ -181,7 +180,9 @@
               const cur = new Date(year, month, d, 12, 0, 0, 0);
               const el = document.createElement('div'); el.className='day'; el.textContent=String(d);
               const isBusy = busy.some(b => !(cur < b.s || cur > b.e));
+                const isPending = pending.some(b => !(cur < b.s || cur > b.e));
               el.classList.add(isBusy ? 'busy' : 'free');
+                if (!isBusy && isPending) el.classList.add('pending');
               if (start && !end && cur.getTime() === start.getTime()) el.classList.add('selected');
               if (start && end && cur >= start && cur <= end) el.classList.add('selected');
               el.onclick = function(){
@@ -224,8 +225,11 @@
           }
           fetch(`/listings/${listingId}/approved`).then(r=>r.json()).then(data => {
             busy = data.map(d => ({ s: new Date(d.start_date), e: new Date(d.end_date) }));
-            const root = document.getElementById('calendar');
-            buildCalendar(root, new Date());
+              fetch(`/listings/${listingId}/pending`).then(r=>r.json()).then(pdata => {
+                pending = pdata.map(d => ({ s: new Date(d.start_date), e: new Date(d.end_date) }));
+                const root = document.getElementById('calendar');
+                buildCalendar(root, new Date());
+              });
           });
           document.getElementById('booking-form').addEventListener('submit', (ev)=>{
             if (!start || !end) { ev.preventDefault(); alert('Выберите даты заезда и выезда'); return; }

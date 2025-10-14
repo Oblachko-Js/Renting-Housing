@@ -976,11 +976,6 @@ app.post("/listings/:id/delete", async (req, res) => {
     try {
       if (fs.existsSync(photoPath)) {
         fs.unlinkSync(photoPath);
-        deletedPhotos.push(photo);
-        console.log(`Удалено фото: ${photo}`);
-      } else {
-        notFoundPhotos.push(photo);
-        console.log(`Фото не найдено: ${photo}`);
       }
     } catch (e) {
       console.error(`Ошибка при удалении фото ${photo}:`, e);
@@ -1006,6 +1001,16 @@ app.get("/listings/:id/approved", async (req, res) => {
   const id = req.params.id;
   const rows = await pool.query(
     `SELECT start_date, end_date FROM bookings WHERE listing_id = $1 AND status = 'approved' ORDER BY start_date ASC`,
+    [id]
+  );
+  res.json(rows.rows);
+});
+
+// API: ожидающие даты (pending) для объявления
+app.get("/listings/:id/pending", async (req, res) => {
+  const id = req.params.id;
+  const rows = await pool.query(
+    `SELECT start_date, end_date FROM bookings WHERE listing_id = $1 AND status = 'pending' ORDER BY start_date ASC`,
     [id]
   );
   res.json(rows.rows);
@@ -1345,6 +1350,7 @@ app.get("/orders", async (req, res) => {
     },
     bookings: rows.rows,
     unreadCount: res.locals.unreadCount,
+    error: req.query.error || null,
   });
 });
 

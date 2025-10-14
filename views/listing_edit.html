@@ -29,7 +29,7 @@
     <form method="POST" action="/listings/<%= listing.id %>/edit" enctype="multipart/form-data">
       <label>Заголовок:<br><input type="text" name="title" value="<%= listing.title %>" required></label><br><br>
       <label>Описание:<br><textarea name="description" required><%= listing.description %></textarea></label><br><br>
-      <label>Цена:<br><input type="number" name="price" min="1" step="1" value="<%= listing.price %>" required></label><br><br>
+      <label>Цена:<br><input type="number" name="price" min="1" max="9223372036854775807" step="1" value="<%= listing.price %>" required></label><br><br>
       <label>Адрес:<br><input type="text" name="address" id="addr" value="<%= listing.address %>" required></label><br><br>
 
       <div style="display:flex;gap:12px;flex-wrap:wrap;">

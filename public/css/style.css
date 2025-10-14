@@ -635,6 +635,12 @@ hr {
   box-shadow: 0 0 0 2px #90caf9;
   font-weight: bold;
 }
+.calendar .day.pending {
+  background: #fffde7;
+  color: #f9a825;
+  font-weight: bold;
+  box-shadow: 0 0 0 2px #ffe082;
+}
 .calendar .day.free:hover {
   background: #90caf9 !important;
   color: #fff !important;
