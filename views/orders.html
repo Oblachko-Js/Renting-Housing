@@ -24,6 +24,11 @@
   </nav>
   <div class="container">
     <h1>Заказы</h1>
+    <% if (req.query.error === 'overlap') { %>
+      <div class="error" style="margin-bottom: 16px;">
+        Невозможно подтвердить бронь: выбранные даты пересекаются с уже подтверждённой арендой
+      </div>
+    <% } %>
     <% if (!bookings || bookings.length === 0) { %>
       <p>У вас пока нет заказов.</p>
     <% } else { %>

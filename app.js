@@ -120,10 +120,10 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
-const uploadMultiple = multer({ storage }).array('photos', 10); // максимум 10 фото
+const uploadMultiple = multer({ storage }).array("photos", 10); // максимум 10 фото
 const uploadFields = multer({ storage }).fields([
-  { name: 'photos', maxCount: 10 },
-  { name: 'additional_photos', maxCount: 10 },
+  { name: "photos", maxCount: 10 },
+  { name: "additional_photos", maxCount: 10 },
 ]);
 
 // Главная страница
@@ -162,13 +162,13 @@ app.get("/api/listings", async (req, res) => {
     district,
     amenity,
     page = 1,
-    limit = 3
+    limit = 3,
   } = req.query;
-  
+
   page = parseInt(page);
   limit = parseInt(limit);
   const offset = (page - 1) * limit;
-  
+
   let where = [];
   let params = [];
   if (q) {
@@ -209,16 +209,20 @@ app.get("/api/listings", async (req, res) => {
       where.push(`l.amenities ILIKE $${params.length}`);
     }
   }
-  
+
   let sql = `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
     sql += " WHERE " + where.join(" AND ");
   }
-  sql += " ORDER BY l.id DESC LIMIT $" + (params.length + 1) + " OFFSET $" + (params.length + 2);
+  sql +=
+    " ORDER BY l.id DESC LIMIT $" +
+    (params.length + 1) +
+    " OFFSET $" +
+    (params.length + 2);
   params.push(limit, offset);
-  
+
   const listings = await pool.query(sql, params);
-  
+
   // Получаем общее количество для проверки есть ли ещё страницы
   let countSql = `SELECT COUNT(*) FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
@@ -227,13 +231,13 @@ app.get("/api/listings", async (req, res) => {
   const countParams = params.slice(0, -2); // убираем limit и offset
   const countResult = await pool.query(countSql, countParams);
   const totalCount = parseInt(countResult.rows[0].count);
-  const hasMore = (offset + limit) < totalCount;
-  
+  const hasMore = offset + limit < totalCount;
+
   res.json({
     listings: listings.rows,
     hasMore,
     currentPage: page,
-    totalCount
+    totalCount,
   });
 });
 
@@ -249,7 +253,7 @@ app.get("/", async (req, res) => {
     district,
     amenity,
   } = req.query;
-  
+
   // Для главной страницы загружаем только первые 3 объявления
   let where = [];
   let params = [];
@@ -291,14 +295,14 @@ app.get("/", async (req, res) => {
       where.push(`l.amenities ILIKE $${params.length}`);
     }
   }
-  
+
   let sql = `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_username FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
     sql += " WHERE " + where.join(" AND ");
   }
   sql += " ORDER BY l.id DESC LIMIT 3";
   const listings = await pool.query(sql, params);
-  
+
   // Получаем общее количество для проверки есть ли ещё объявления
   let countSql = `SELECT COUNT(*) FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
@@ -307,7 +311,7 @@ app.get("/", async (req, res) => {
   const countResult = await pool.query(countSql, params);
   const totalCount = parseInt(countResult.rows[0].count);
   const hasMore = listings.rows.length < totalCount;
-  
+
   // Для карты загружаем ВСЕ объявления (без LIMIT)
   let mapSql = `SELECT l.id, l.title, l.lat, l.lng, l.photo, l.price FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
@@ -315,7 +319,7 @@ app.get("/", async (req, res) => {
   }
   mapSql += " ORDER BY l.id DESC";
   const allListings = await pool.query(mapSql, params);
-  
+
   res.render("index", {
     listings: listings.rows,
     allListings: allListings.rows, // Все объявления для карты
@@ -447,7 +451,7 @@ app.get("/admin/api/tables", requireAdmin, async (req, res) => {
     const r = await pool.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`
     );
-    res.json(r.rows.map(x => x.table_name));
+    res.json(r.rows.map((x) => x.table_name));
   } catch (e) {
     res.status(500).json({ error: "db" });
   }
@@ -459,7 +463,10 @@ app.get("/admin/api/table/:name", requireAdmin, async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 50), 200);
   const offset = Math.max(Number(req.query.offset || 0), 0);
   try {
-    const r = await pool.query(`SELECT * FROM ${name} ORDER BY 1 LIMIT $1 OFFSET $2`, [limit, offset]);
+    const r = await pool.query(
+      `SELECT * FROM ${name} ORDER BY 1 LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
     res.json({ rows: r.rows });
   } catch (e) {
     res.status(400).json({ error: "bad_table" });
@@ -467,54 +474,79 @@ app.get("/admin/api/table/:name", requireAdmin, async (req, res) => {
 });
 
 // Insert row
-app.post("/admin/api/table/:name/insert", requireAdmin, express.json(), async (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
-  const data = req.body || {};
-  const keys = Object.keys(data);
-  if (!keys.length) return res.status(400).json({ error: "no_fields" });
-  const cols = keys.map(k => k.replace(/[^a-zA-Z0-9_]/g, ""));
-  const placeholders = cols.map((_, i) => `$${i+1}`);
-  const values = cols.map(k => data[k]);
-  try {
-    const r = await pool.query(`INSERT INTO ${name} (${cols.join(',')}) VALUES (${placeholders.join(',')}) RETURNING *`, values);
-    res.json({ row: r.rows[0] });
-  } catch (e) {
-    res.status(400).json({ error: "insert_failed" });
+app.post(
+  "/admin/api/table/:name/insert",
+  requireAdmin,
+  express.json(),
+  async (req, res) => {
+    const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+    const data = req.body || {};
+    const keys = Object.keys(data);
+    if (!keys.length) return res.status(400).json({ error: "no_fields" });
+    const cols = keys.map((k) => k.replace(/[^a-zA-Z0-9_]/g, ""));
+    const placeholders = cols.map((_, i) => `$${i + 1}`);
+    const values = cols.map((k) => data[k]);
+    try {
+      const r = await pool.query(
+        `INSERT INTO ${name} (${cols.join(",")}) VALUES (${placeholders.join(
+          ","
+        )}) RETURNING *`,
+        values
+      );
+      res.json({ row: r.rows[0] });
+    } catch (e) {
+      res.status(400).json({ error: "insert_failed" });
+    }
   }
-});
+);
 
 // Update row by primary key id
-app.post("/admin/api/table/:name/update", requireAdmin, express.json(), async (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
-  const data = req.body || {};
-  const id = data.id;
-  if (!id) return res.status(400).json({ error: "no_id" });
-  const keys = Object.keys(data).filter(k => k !== 'id');
-  if (!keys.length) return res.status(400).json({ error: "no_fields" });
-  const cols = keys.map(k => k.replace(/[^a-zA-Z0-9_]/g, ""));
-  const sets = cols.map((c, i) => `${c} = $${i+1}`);
-  const values = cols.map(k => data[k]);
-  values.push(id);
-  try {
-    const r = await pool.query(`UPDATE ${name} SET ${sets.join(', ')} WHERE id = $${values.length} RETURNING *`, values);
-    res.json({ row: r.rows[0] });
-  } catch (e) {
-    res.status(400).json({ error: "update_failed" });
+app.post(
+  "/admin/api/table/:name/update",
+  requireAdmin,
+  express.json(),
+  async (req, res) => {
+    const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+    const data = req.body || {};
+    const id = data.id;
+    if (!id) return res.status(400).json({ error: "no_id" });
+    const keys = Object.keys(data).filter((k) => k !== "id");
+    if (!keys.length) return res.status(400).json({ error: "no_fields" });
+    const cols = keys.map((k) => k.replace(/[^a-zA-Z0-9_]/g, ""));
+    const sets = cols.map((c, i) => `${c} = $${i + 1}`);
+    const values = cols.map((k) => data[k]);
+    values.push(id);
+    try {
+      const r = await pool.query(
+        `UPDATE ${name} SET ${sets.join(", ")} WHERE id = $${
+          values.length
+        } RETURNING *`,
+        values
+      );
+      res.json({ row: r.rows[0] });
+    } catch (e) {
+      res.status(400).json({ error: "update_failed" });
+    }
   }
-});
+);
 
 // Delete row by primary key id
-app.post("/admin/api/table/:name/delete", requireAdmin, express.json(), async (req, res) => {
-  const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
-  const id = req.body && req.body.id;
-  if (!id) return res.status(400).json({ error: "no_id" });
-  try {
-    await pool.query(`DELETE FROM ${name} WHERE id = $1`, [id]);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(400).json({ error: "delete_failed" });
+app.post(
+  "/admin/api/table/:name/delete",
+  requireAdmin,
+  express.json(),
+  async (req, res) => {
+    const name = req.params.name.replace(/[^a-zA-Z0-9_]/g, "");
+    const id = req.body && req.body.id;
+    if (!id) return res.status(400).json({ error: "no_id" });
+    try {
+      await pool.query(`DELETE FROM ${name} WHERE id = $1`, [id]);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ error: "delete_failed" });
+    }
   }
-});
+);
 
 // Личный кабинет
 app.get("/profile", async (req, res) => {
@@ -636,12 +668,12 @@ app.post("/listings/new", uploadMultiple, async (req, res) => {
   }
   const latNum = lat ? Number(lat) : null;
   const lngNum = lng ? Number(lng) : null;
-  
+
   // Проверяем количество загруженных фото
   const files = req.files || [];
   if (files.length < 3) {
     // Удаляем загруженные файлы если их меньше 3
-    files.forEach(file => {
+    files.forEach((file) => {
       try {
         fs.unlinkSync(path.join(uploadDir, file.filename));
       } catch (_) {}
@@ -650,21 +682,21 @@ app.post("/listings/new", uploadMultiple, async (req, res) => {
   }
   if (files.length > 10) {
     // Удаляем загруженные файлы если их больше лимита
-    files.forEach(file => {
+    files.forEach((file) => {
       try {
         fs.unlinkSync(path.join(uploadDir, file.filename));
       } catch (_) {}
     });
     return res.redirect("/listings/new?error=max_photos");
   }
-  
+
   // Сохраняем имена файлов в JSON
-  const photos = files.map(file => file.filename);
+  const photos = files.map((file) => file.filename);
   const photosJson = JSON.stringify(photos);
-  
+
   // Первое фото для обратной совместимости
   const photo = photos[0];
-  
+
   await pool.query(
     `INSERT INTO listings (title, description, price, address, owner_id, photo, photos, rooms, housing_type, district, amenities, lat, lng)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
@@ -758,7 +790,11 @@ app.get("/listings/:id/edit", async (req, res) => {
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
-  res.render("listing_edit", { listing, unreadCount: res.locals.unreadCount, error: req.query.error });
+  res.render("listing_edit", {
+    listing,
+    unreadCount: res.locals.unreadCount,
+    error: req.query.error,
+  });
 });
 
 // Обработка редактирования объявления
@@ -781,22 +817,26 @@ app.post("/listings/:id/edit", uploadFields, async (req, res) => {
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
-  
+
   // Текущие фото
   let currentPhotos;
   try {
-    currentPhotos = listing.photos ? JSON.parse(listing.photos) : (listing.photo ? [listing.photo] : []);
+    currentPhotos = listing.photos
+      ? JSON.parse(listing.photos)
+      : listing.photo
+      ? [listing.photo]
+      : [];
   } catch (_) {
     currentPhotos = listing.photo ? [listing.photo] : [];
   }
 
   // Фото, помеченные к удалению (массив имён файлов)
   let deleteList = req.body.delete_photos || [];
-  if (typeof deleteList === 'string') {
+  if (typeof deleteList === "string") {
     // Может приходить как "a.jpg,b.jpg"
     deleteList = deleteList
-      .split(',')
-      .map(s => (s || '').trim())
+      .split(",")
+      .map((s) => (s || "").trim())
       .filter(Boolean);
   }
 
@@ -804,39 +844,45 @@ app.post("/listings/:id/edit", uploadFields, async (req, res) => {
   const uploadedPhotos = [];
   const filesPhotos = (req.files && req.files.photos) || [];
   const filesAdditional = (req.files && req.files.additional_photos) || [];
-  filesPhotos.forEach(f => uploadedPhotos.push(f.filename));
-  filesAdditional.forEach(f => uploadedPhotos.push(f.filename));
+  filesPhotos.forEach((f) => uploadedPhotos.push(f.filename));
+  filesAdditional.forEach((f) => uploadedPhotos.push(f.filename));
 
   // Формируем новый список, не удаляя файлы на диске до валидации
-  const remaining = currentPhotos.filter(fn => !deleteList.includes(fn));
+  const remaining = currentPhotos.filter((fn) => !deleteList.includes(fn));
   const proposedPhotos = remaining.concat(uploadedPhotos);
 
   if (proposedPhotos.length < 3) {
     // Откатываем вновь загруженные файлы
-    uploadedPhotos.forEach(fn => {
-      try { fs.unlinkSync(path.join(uploadDir, fn)); } catch(_) {}
+    uploadedPhotos.forEach((fn) => {
+      try {
+        fs.unlinkSync(path.join(uploadDir, fn));
+      } catch (_) {}
     });
     return res.redirect(`/listings/${id}/edit?error=min_photos`);
   }
   if (proposedPhotos.length > 10) {
-    uploadedPhotos.forEach(fn => {
-      try { fs.unlinkSync(path.join(uploadDir, fn)); } catch(_) {}
+    uploadedPhotos.forEach((fn) => {
+      try {
+        fs.unlinkSync(path.join(uploadDir, fn));
+      } catch (_) {}
     });
     return res.redirect(`/listings/${id}/edit?error=max_photos`);
   }
 
   // После успешной валидации — удаляем отмеченные старые файлы
-  deleteList.forEach(fn => {
+  deleteList.forEach((fn) => {
     const p = path.join(uploadDir, fn);
     if (fs.existsSync(p)) {
-      try { fs.unlinkSync(p); } catch(_) {}
+      try {
+        fs.unlinkSync(p);
+      } catch (_) {}
     }
   });
 
   // Значения для сохранения
   const photo = proposedPhotos[0];
   const photosJson = JSON.stringify(proposedPhotos);
-  
+
   // собрать amenities
   let amenities = req.body.amenities;
   if (Array.isArray(amenities)) {
@@ -885,19 +931,62 @@ app.post("/listings/:id/edit", uploadFields, async (req, res) => {
 // Удаление объявления
 app.post("/listings/:id/delete", async (req, res) => {
   const id = req.params.id;
+  // Получаем все данные объявления, включая фотографии
   const result = await pool.query(`SELECT * FROM listings WHERE id = $1`, [id]);
   if (result.rows.length === 0) return res.send("Объявление не найдено");
   const listing = result.rows[0];
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
-  // Удалить файл фото, если он есть
+
+  // Собираем все фотографии для удаления
+  let photosToDelete = new Set();
+
+  // Добавляем основное фото
   if (listing.photo) {
-    const photoPath = path.join(uploadDir, listing.photo);
-    if (fs.existsSync(photoPath)) {
-      fs.unlinkSync(photoPath);
+    photosToDelete.add(listing.photo);
+  }
+
+  // Добавляем дополнительные фотографии
+  if (listing.photos) {
+    let additionalPhotos = [];
+    try {
+      additionalPhotos = JSON.parse(listing.photos);
+    } catch (e) {
+      // Попытка исправить невалидный JSON
+      try {
+        const fixed = listing.photos.replace(/""/g, '"');
+        additionalPhotos = JSON.parse(fixed);
+      } catch (e2) {
+        console.error("Ошибка при парсинге дополнительных фото:", e2);
+      }
+    }
+    if (Array.isArray(additionalPhotos)) {
+      additionalPhotos.forEach((photo) => {
+        if (photo) photosToDelete.add(photo);
+      });
     }
   }
+
+  // Удаляем все собранные фотографии
+  let deletedPhotos = [];
+  let notFoundPhotos = [];
+  photosToDelete.forEach((photo) => {
+    const photoPath = path.join(uploadDir, photo);
+    try {
+      if (fs.existsSync(photoPath)) {
+        fs.unlinkSync(photoPath);
+        deletedPhotos.push(photo);
+        console.log(`Удалено фото: ${photo}`);
+      } else {
+        notFoundPhotos.push(photo);
+        console.log(`Фото не найдено: ${photo}`);
+      }
+    } catch (e) {
+      console.error(`Ошибка при удалении фото ${photo}:`, e);
+    }
+  });
+  // Удаляем объявление из базы данных
   await pool.query(`DELETE FROM listings WHERE id = $1`, [id]);
   res.redirect("/");
 });
@@ -1281,6 +1370,24 @@ app.post("/bookings/:id/approve", async (req, res) => {
     [b.listing_id, b.id, b.start_date, b.end_date]
   );
   if (overlaps.rows.length) {
+    // Автоматически отклоняем бронь при пересечении дат
+    await pool.query(`UPDATE bookings SET status = 'rejected' WHERE id = $1`, [
+      id,
+    ]);
+    notifyUser(io, b.tenant_id, {
+      title: "Бронь отклонена",
+      body: "На выбранные даты уже есть подтверждённая аренда.",
+    });
+    // Опционально можно отправить email
+    emailUser(
+      b.tenant_id,
+      "Бронь отклонена",
+      `Ваша бронь на даты ${new Date(b.start_date).toLocaleDateString(
+        "ru-RU"
+      )} - ${new Date(b.end_date).toLocaleDateString(
+        "ru-RU"
+      )} была отклонена, так как на эти даты уже есть подтверждённая аренда.`
+    );
     return res.redirect("/orders?error=overlap");
   }
 
