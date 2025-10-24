@@ -8,7 +8,7 @@
 </head>
 <body>
   <nav class="navbar">
-    <button class="burger" type="button" aria-label="Меню" onclick="(function(){var el=document.querySelector('.nav-links'); if(el){ el.classList.toggle('show'); }})()">☰</button>
+    <button class="burger" type="button" aria-label="Меню" onclick="(function(e){e.preventDefault();var el=document.querySelector('.nav-links');var btn=document.querySelector('.burger');if(el){el.classList.toggle('show');btn.setAttribute('aria-expanded',el.classList.contains('show'))}})()">☰</button>
     <div class="nav-links">
       <a href="/">Главная</a>
       <% if (user) { %>
@@ -37,6 +37,7 @@
       <% } %>
     </div>
   </nav>
+  <div class="container">
   <div class="container">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
       <h1 style="margin:0;"><%= listing.title %></h1>
