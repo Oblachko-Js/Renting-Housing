@@ -1042,12 +1042,21 @@ app.get("/chats", async (req, res) => {
       `SELECT COUNT(*) FROM messages WHERE receiver_id = $1 AND sender_id = $2 AND listing_id = $3 AND is_read = false AND text <> ''`,
       [req.session.userId, chat.other_id, chat.listing_id]
     );
+    // last message preview
+    const last = await pool.query(
+      `SELECT text, timestamp, sender_id FROM messages
+       WHERE listing_id = $1 AND ((sender_id = $2 AND receiver_id = $3) OR (sender_id = $3 AND receiver_id = $2))
+       ORDER BY timestamp DESC LIMIT 1`,
+      [chat.listing_id, req.session.userId, chat.other_id]
+    );
     if (otherUser.rows.length && listing.rows.length) {
       chatList.push({
         id: Number(chat.chat_id),
         other_username: otherUser.rows[0].name,
         listing_title: listing.rows[0].title,
         unread: parseInt(unread.rows[0].count, 10),
+        last_text: last.rows[0] ? last.rows[0].text : "",
+        last_time: last.rows[0] ? last.rows[0].timestamp : null,
       });
     }
   }
@@ -1276,29 +1285,38 @@ app.post("/bookings/create", async (req, res) => {
       return res.redirect(`/listings/${listing_id}?error=bad_dates`);
     }
 
-    // Проверяем пересечения (pending/approved блокируют)
-    const overlaps = await pool.query(
-      `SELECT 1 FROM bookings
-       WHERE listing_id = $1
-         AND status IN ('pending','approved')
-         AND NOT (end_date < $2 OR start_date > $3)
-       LIMIT 1`,
-      [listing_id, start, end]
-    );
-    if (overlaps.rows.length) {
-      return res.redirect(`/listings/${listing_id}?error=overlap`);
-    }
-
+    // Создаём pending-запрос даже если есть пересечения — арендодатель сам решит
     await pool.query(
       `INSERT INTO bookings (listing_id, tenant_id, start_date, end_date, status)
        VALUES ($1, $2, $3, $4, 'pending')`,
       [listing_id, req.session.userId, start, end]
     );
 
+    // Проверим, есть ли пересекающиеся подтверждённые брони — добавим пометку в уведомлении
+    const overlapApproved = await pool.query(
+      `SELECT b.id, b.start_date, b.end_date, b.tenant_id, u.username
+       FROM bookings b
+       JOIN users u ON b.tenant_id = u.id
+       WHERE b.listing_id = $1 AND b.status = 'approved'
+         AND NOT (b.end_date < $2 OR b.start_date > $3)
+       LIMIT 1`,
+      [listing_id, start, end]
+    );
+
+    let body = "У вас новый запрос на бронирование";
+    if (overlapApproved.rows.length) {
+      const o = overlapApproved.rows[0];
+      body += ` — Внимание: даты пересекаются с подтверждённой бронью (${new Date(
+        o.start_date
+      ).toLocaleDateString("ru-RU")} — ${new Date(
+        o.end_date
+      ).toLocaleDateString("ru-RU")}, пользователь ${o.username})`;
+    }
+
     // уведомим арендодателя
     notifyUser(io, ownerId, {
       title: "Новая бронь",
-      body: "У вас новый запрос на бронирование",
+      body: body,
     });
     res.redirect(`/listings/${listing_id}?success=requested`);
   } catch (e) {
@@ -1309,15 +1327,47 @@ app.post("/bookings/create", async (req, res) => {
 // Список "Мои бронирования" (арендатор)
 app.get("/my-bookings", async (req, res) => {
   if (!req.session.userId) return res.redirect("/login");
+  // Pagination & filtering similar to /orders
+  const perPage = 5;
+  const page = Math.max(1, parseInt(req.query.page || "1"));
+  const status = (req.query.status || "").trim();
+  const allowed = ["pending", "approved", "rejected"];
+  const params = [req.session.userId];
+  let where = "WHERE b.tenant_id = $1";
+  let idx = 2;
+  if (allowed.includes(status)) {
+    where += ` AND b.status = $${idx}`;
+    params.push(status);
+    idx++;
+  }
+
+  const countQ = `SELECT COUNT(*) AS cnt FROM bookings b ${where}`;
+  const countRes = await pool.query(countQ, params);
+  const total = parseInt(countRes.rows[0].cnt, 10) || 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const offset = (page - 1) * perPage;
+
+  const orderClause = allowed.includes(status)
+    ? "ORDER BY b.start_date DESC"
+    : "ORDER BY (CASE WHEN b.status='pending' THEN 1 WHEN b.status='approved' THEN 2 ELSE 3 END), b.start_date DESC";
+
+  const dataParams = params.slice();
+  const limitIdx = dataParams.length + 1;
+  const offsetIdx = dataParams.length + 2;
+  dataParams.push(perPage);
+  dataParams.push(offset);
+
   const rows = await pool.query(
     `SELECT b.*, l.title, l.address, COALESCE(u.display_name, u.username) AS owner_name
      FROM bookings b
      JOIN listings l ON b.listing_id = l.id
      JOIN users u ON l.owner_id = u.id
-     WHERE b.tenant_id = $1
-     ORDER BY b.start_date DESC`,
-    [req.session.userId]
+     ${where}
+     ${orderClause}
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    dataParams
   );
+
   res.render("my_bookings", {
     user: {
       id: req.session.userId,
@@ -1326,6 +1376,9 @@ app.get("/my-bookings", async (req, res) => {
     },
     bookings: rows.rows,
     unreadCount: res.locals.unreadCount,
+    page: page,
+    totalPages: totalPages,
+    filter: allowed.includes(status) ? status : "all",
   });
 });
 
@@ -1333,24 +1386,78 @@ app.get("/my-bookings", async (req, res) => {
 app.get("/orders", async (req, res) => {
   if (!req.session.userId) return res.redirect("/login");
   if (req.session.role !== "landlord") return res.redirect("/profile");
-  const rows = await pool.query(
-    `SELECT b.*, l.title, l.address, COALESCE(u.display_name, u.username) AS tenant_name
+  // Pagination & filtering
+  const perPage = 5;
+  const page = Math.max(1, parseInt(req.query.page || "1"));
+  const status = (req.query.status || "").trim();
+  const allowed = ["pending", "approved", "rejected"];
+  const params = [req.session.userId];
+  let where = "WHERE l.owner_id = $1";
+  let idx = 2;
+  if (allowed.includes(status)) {
+    where += ` AND b.status = $${idx}`;
+    params.push(status);
+    idx++;
+  }
+
+  // total count
+  const countQ = `SELECT COUNT(*) AS cnt FROM bookings b JOIN listings l ON b.listing_id = l.id ${where}`;
+  const countRes = await pool.query(countQ, params);
+  const total = parseInt(countRes.rows[0].cnt, 10) || 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const offset = (page - 1) * perPage;
+
+  // Ordering: pending first, then approved, then rejected (when no status filter applied)
+  const orderClause = allowed.includes(status)
+    ? "ORDER BY b.start_date DESC"
+    : "ORDER BY (CASE WHEN b.status='pending' THEN 1 WHEN b.status='approved' THEN 2 ELSE 3 END), b.start_date DESC";
+
+  // build params for data query
+  const dataParams = params.slice();
+  const limitIdx = dataParams.length + 1;
+  const offsetIdx = dataParams.length + 2;
+  dataParams.push(perPage);
+  dataParams.push(offset);
+
+  const dataQ = `SELECT b.*, l.title, l.address, COALESCE(u.display_name, u.username) AS tenant_name
      FROM bookings b
      JOIN listings l ON b.listing_id = l.id
      JOIN users u ON b.tenant_id = u.id
-     WHERE l.owner_id = $1
-     ORDER BY b.start_date DESC`,
-    [req.session.userId]
-  );
+     ${where}
+     ${orderClause}
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+
+  const rows = await pool.query(dataQ, dataParams);
+
+  // Для каждого бронирования определим, пересекается ли оно с уже подтверждённой бронью
+  const enriched = [];
+  for (const b of rows.rows) {
+    const ov = await pool.query(
+      `SELECT b2.id, b2.start_date, b2.end_date, COALESCE(u.display_name, u.username) AS tenant_name
+       FROM bookings b2
+       JOIN users u ON b2.tenant_id = u.id
+       WHERE b2.listing_id = $1 AND b2.status = 'approved' AND b2.id <> $2
+         AND NOT (b2.end_date < $3 OR b2.start_date > $4)
+       LIMIT 1`,
+      [b.listing_id, b.id, b.start_date, b.end_date]
+    );
+    b.overlaps_approved = ov.rows.length > 0;
+    b.overlap = ov.rows[0] || null;
+    enriched.push(b);
+  }
+
   res.render("orders", {
     user: {
       id: req.session.userId,
       username: req.session.username,
       role: req.session.role,
     },
-    bookings: rows.rows,
+    bookings: enriched,
     unreadCount: res.locals.unreadCount,
     error: req.query.error || null,
+    page: page,
+    totalPages: totalPages,
+    filter: allowed.includes(status) ? status : "all",
   });
 });
 
@@ -1376,25 +1483,43 @@ app.post("/bookings/:id/approve", async (req, res) => {
     [b.listing_id, b.id, b.start_date, b.end_date]
   );
   if (overlaps.rows.length) {
-    // Автоматически отклоняем бронь при пересечении дат
-    await pool.query(`UPDATE bookings SET status = 'rejected' WHERE id = $1`, [
-      id,
-    ]);
-    notifyUser(io, b.tenant_id, {
-      title: "Бронь отклонена",
-      body: "На выбранные даты уже есть подтверждённая аренда.",
-    });
-    // Опционально можно отправить email
-    emailUser(
-      b.tenant_id,
-      "Бронь отклонена",
-      `Ваша бронь на даты ${new Date(b.start_date).toLocaleDateString(
-        "ru-RU"
-      )} - ${new Date(b.end_date).toLocaleDateString(
-        "ru-RU"
-      )} была отклонена, так как на эти даты уже есть подтверждённая аренда.`
+    // Есть пересекающаяся подтверждённая бронь.
+    // Если владелец не подтвердил намерение (force), просим подтвердить в UI.
+    const force =
+      req.body && (req.body.force === "1" || req.body.force === "true");
+    if (!force) {
+      return res.redirect(`/orders?error=confirm_needed&booking=${id}`);
+    }
+
+    // Если force=true, отклоняем все пересекающиеся approved брони (уведомляем их арендаторов)
+    const conflicting = await pool.query(
+      `SELECT b2.* FROM bookings b2 WHERE b2.listing_id = $1 AND b2.status = 'approved'
+         AND NOT (b2.end_date < $2 OR b2.start_date > $3)`,
+      [b.listing_id, b.start_date, b.end_date]
     );
-    return res.redirect("/orders?error=overlap");
+    for (const c of conflicting.rows) {
+      await pool.query(
+        `UPDATE bookings SET status = 'rejected' WHERE id = $1`,
+        [c.id]
+      );
+      notifyUser(io, c.tenant_id, {
+        title: "Бронь отменена",
+        body: `Ваша ранее подтверждённая бронь на даты ${new Date(
+          c.start_date
+        ).toLocaleDateString("ru-RU")} - ${new Date(
+          c.end_date
+        ).toLocaleDateString("ru-RU")} была отменена владельцем.`,
+      });
+      emailUser(
+        c.tenant_id,
+        "Бронь отменена",
+        `Ваша ранее подтверждённая бронь на даты ${new Date(
+          c.start_date
+        ).toLocaleDateString("ru-RU")} - ${new Date(
+          c.end_date
+        ).toLocaleDateString("ru-RU")} была отменена владельцем.`
+      );
+    }
   }
 
   await pool.query(`UPDATE bookings SET status = 'approved' WHERE id = $1`, [

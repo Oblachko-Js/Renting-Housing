@@ -71,6 +71,11 @@
 
     socket.emit('identify', senderId);
     socket.emit('join chat', chatId);
+    
+    // Прокрутка вниз при загрузке страницы
+    window.addEventListener('load', () => {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
 
     function appendBubble({ senderId: sid, senderUsername: su, text, timestamp }) {
       const li = document.createElement('li');

@@ -36,10 +36,18 @@
       <ul class="chat-list">
         <% chats.forEach(function(chat) { %>
           <li class="chat-item<%= chat.unread > 0 ? ' chat-unread' : '' %>">
-            <a class="btn" href="/chats/<%= chat.id %>">
-              <%= chat.other_username %> — <%= chat.listing_title %>
+            <a class="chat-link" href="/chats/<%= chat.id %>">
+              <div class="chat-thumb"><span><%= (chat.other_username||'?')[0].toUpperCase() %></span></div>
+              <div class="chat-meta">
+                <div class="chat-row">
+                  <span class="chat-title"><%= chat.other_username %></span>
+                  <span class="chat-time"><%= chat.last_time ? new Date(chat.last_time).toLocaleString('ru-RU',{hour:'2-digit',minute:'2-digit'}) : '' %></span>
+                </div>
+                <div class="chat-sub"><%= chat.listing_title %></div>
+                <div class="chat-preview"><%= chat.last_text ? (chat.last_text.length>80 ? (chat.last_text.slice(0,80)+'...') : chat.last_text) : '' %></div>
+              </div>
               <% if (chat.unread > 0) { %>
-                <span class="badge badge-small"><%= chat.unread %></span>
+                <div class="chat-badge"><span><%= chat.unread %></span></div>
               <% } %>
             </a>
           </li>

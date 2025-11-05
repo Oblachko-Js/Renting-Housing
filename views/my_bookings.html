@@ -23,6 +23,14 @@
   </nav>
   <div class="container">
     <h1>Мои бронирования</h1>
+    <% const makeLink = (s, p) => { const base = '/my-bookings'; if(!s || s==='all') return base + (p && p>1 ? ('?page=' + p) : ''); return base + '?status=' + s + (p && p>1 ? ('&page=' + p) : ''); } %>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+      <div style="font-weight:600;margin-right:8px;color:#333;">Фильтр:</div>
+      <a href="<%= makeLink('all',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'all' ? 'background:#e3f2fd;color:#0d47a1;' : 'background:transparent;color:#1976d2;' %>">Все</a>
+      <a href="<%= makeLink('pending',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'pending' ? 'background:#fff3e1;color:#ef6c00;' : 'background:transparent;color:#1976d2;' %>">В ожидании</a>
+      <a href="<%= makeLink('approved',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'approved' ? 'background:#e8f5e9;color:#2e7d32;' : 'background:transparent;color:#1976d2;' %>">Подтверждённые</a>
+      <a href="<%= makeLink('rejected',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'rejected' ? 'background:#ffebee;color:#c62828;' : 'background:transparent;color:#1976d2;' %>">Отклонённые</a>
+    </div>
     <% if (!bookings || bookings.length === 0) { %>
       <p>У вас пока нет бронирований.</p>
     <% } else { %>
@@ -38,6 +46,17 @@
           </li>
         <% }) %>
       </ul>
+      <% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <% const prevPage = page > 1 ? page - 1 : null; %>
+          <% const nextPage = page < totalPages ? page + 1 : null; %>
+          <a href="<%= prevPage ? makeLink(filter, prevPage) : '#' %>" style="padding:6px 10px;background:#f1f1f1;border-radius:6px;text-decoration:none;color:#333; <%= prevPage ? '' : 'opacity:0.5;pointer-events:none;' %>">‹</a>
+          <% for(let i=1;i<=totalPages;i++){ %>
+            <a href="<%= makeLink(filter, i) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= page===i ? 'background:#1976d2;color:#fff;' : 'background:#fff;border:1px solid #e0e0e0;color:#1976d2;' %>"><%= i %></a>
+          <% } %>
+          <a href="<%= nextPage ? makeLink(filter, nextPage) : '#' %>" style="padding:6px 10px;background:#f1f1f1;border-radius:6px;text-decoration:none;color:#333; <%= nextPage ? '' : 'opacity:0.5;pointer-events:none;' %>">›</a>
+        </div>
+      <% } %>
     <% } %>
   </div>
 </body>

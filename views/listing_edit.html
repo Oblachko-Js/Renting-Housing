@@ -5,8 +5,101 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Редактировать объявление</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    #edit-listing-page {
+      background: #fff;
+      min-height: 100vh;
+    }
+    #edit-listing-page .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px;
+    }
+    #edit-listing-page h1 {
+      font-size: 32px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin-bottom: 32px;
+    }
+    #edit-listing-page .form-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    #edit-listing-page .form-group {
+      margin-bottom: 24px;
+    }
+    #edit-listing-page label {
+      display: block;
+      font-size: 15px;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+    #edit-listing-page input[type="text"],
+    #edit-listing-page input[type="number"],
+    #edit-listing-page select,
+    #edit-listing-page textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.15s;
+    }
+    #edit-listing-page textarea {
+      height: 160px;
+      resize: vertical;
+    }
+    #edit-listing-page input:focus,
+    #edit-listing-page select:focus,
+    #edit-listing-page textarea:focus {
+      border-color: #2563eb;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    #edit-listing-page .amenities-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+    }
+    #edit-listing-page .amenity-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #edit-listing-page .amenity-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+    }
+    #edit-listing-page .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    #edit-listing-page button[type="submit"] {
+      background: #2563eb;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #edit-listing-page button[type="submit"]:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+  </style>
 </head>
-<body>
+<body id="edit-listing-page">
   <nav class="navbar">
     <button class="burger" type="button" aria-label="Меню" onclick="(function(){var el=document.querySelector('.nav-links'); if(el){ el.classList.toggle('show'); }})()">☰</button>
     <div class="nav-links">
@@ -27,217 +120,105 @@
       </div>
     <% } %>
     <form method="POST" action="/listings/<%= listing.id %>/edit" enctype="multipart/form-data">
-      <label>Заголовок:<br><input type="text" name="title" value="<%= listing.title %>" required></label><br><br>
-      <label>Описание:<br><textarea name="description" required><%= listing.description %></textarea></label><br><br>
-      <label>Цена:<br><input type="number" name="price" min="1" max="9223372036854775807" step="1" value="<%= listing.price %>" required></label><br><br>
-      <label>Адрес:<br><input type="text" name="address" id="addr" value="<%= listing.address %>" required></label><br><br>
-
-      <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <label>Количество комнат:<br><input type="number" min="1" name="rooms" value="<%= listing.rooms || '' %>" placeholder="Напр. 2"></label>
-        <label>Тип жилья:<br>
-          <select name="housing_type">
-            <option value="" <%= !listing.housing_type ? 'selected' : '' %>></option>
-            <option value="apartment" <%= listing.housing_type==='apartment' ? 'selected' : '' %>>Квартира</option>
-            <option value="house" <%= listing.housing_type==='house' ? 'selected' : '' %>>Дом</option>
-            <option value="room" <%= listing.housing_type==='room' ? 'selected' : '' %>>Комната</option>
-            <option value="studio" <%= listing.housing_type==='studio' ? 'selected' : '' %>>Студия</option>
-          </select>
-        </label>
-        <label>Район:<br><input type="text" name="district" id="district" value="<%= listing.district || '' %>" placeholder="Напр. Центральный"></label>
-      </div><br>
-
-      <fieldset style="border:1px solid #e0e0e0;padding:10px 12px;border-radius:8px;">
-        <legend>Удобства</legend>
-        <% const ams = (listing.amenities || '').split(',').map(function(s){return (s||'').trim();}); %>
-        <label><input type="checkbox" name="amenities" value="wifi" <%= ams.includes('wifi') ? 'checked' : '' %>> Wi‑Fi</label>
-        <label><input type="checkbox" name="amenities" value="parking" <%= ams.includes('parking') ? 'checked' : '' %>> Парковка</label>
-        <label><input type="checkbox" name="amenities" value="pets" <%= ams.includes('pets') ? 'checked' : '' %>> Можно с животными</label>
-        <label><input type="checkbox" name="amenities" value="balcony" <%= ams.includes('balcony') ? 'checked' : '' %>> Балкон</label>
-        <label><input type="checkbox" name="amenities" value="washing" <%= ams.includes('washing') ? 'checked' : '' %>> Стиральная машина</label>
-      </fieldset><br>
-
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-        <div>
-          <label>Широта (lat):<br><input type="number" step="0.000001" name="lat" id="lat" value="<%= typeof listing.lat === 'number' ? listing.lat : (listing.lat || '') %>" placeholder="55.751244"></label>
+      <div class="form-card">
+        <div class="form-group">
+          <label>Заголовок</label>
+          <input type="text" name="title" value="<%= listing.title %>" required>
         </div>
-        <div>
-          <label>Долгота (lng):<br><input type="number" step="0.000001" name="lng" id="lng" value="<%= typeof listing.lng === 'number' ? listing.lng : (listing.lng || '') %>" placeholder="37.618423"></label>
+        <div class="form-group">
+          <label>Описание</label>
+          <textarea name="description" required><%= listing.description %></textarea>
         </div>
-      </div>
+        <div class="form-group">
+          <label>Цена</label>
+          <input type="number" name="price" min="1" max="9223372036854775807" step="1" value="<%= listing.price %>" required>
+        </div>
+        <div class="form-group">
+          <label>Адрес</label>
+          <input type="text" name="address" id="addr" value="<%= listing.address %>" required>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:20px;margin-bottom:24px;">
+          <div>
+            <label>Количество комнат</label>
+            <input type="number" min="1" name="rooms" value="<%= listing.rooms || '' %>" placeholder="Напр. 2">
+          </div>
+          <div>
+            <label>Тип жилья</label>
+            <select name="housing_type">
+              <option value="apartment" <%= listing.housing_type==='apartment' ? 'selected' : '' %>>Квартира</option>
+              <option value="house" <%= listing.housing_type==='house' ? 'selected' : '' %>>Дом</option>
+              <option value="room" <%= listing.housing_type==='room' ? 'selected' : '' %>>Комната</option>
+              <option value="studio" <%= listing.housing_type==='studio' ? 'selected' : '' %>>Студия</option>
+            </select>
+          </div>
+          <div>
+            <label>Район</label>
+            <input type="text" name="district" id="district" value="<%= listing.district || '' %>" placeholder="Напр. Центральный">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Удобства</label>
+          <div class="amenities-grid">
+            <% const ams = (listing.amenities || '').split(',').map(function(s){return (s||'').trim();}); %>
+            <label class="amenity-item"><input type="checkbox" name="amenities" value="wifi" <%= ams.includes('wifi') ? 'checked' : '' %>> Wi‑Fi</label>
+            <label class="amenity-item"><input type="checkbox" name="amenities" value="parking" <%= ams.includes('parking') ? 'checked' : '' %>> Парковка</label>
+            <label class="amenity-item"><input type="checkbox" name="amenities" value="pets" <%= ams.includes('pets') ? 'checked' : '' %>> Можно с животными</label>
+            <label class="amenity-item"><input type="checkbox" name="amenities" value="balcony" <%= ams.includes('balcony') ? 'checked' : '' %>> Балкон</label>
+            <label class="amenity-item"><input type="checkbox" name="amenities" value="washing" <%= ams.includes('washing') ? 'checked' : '' %>> Стиральная машина</label>
+          </div>
+        </div>
+
+      <!-- Скрытые поля широты/долготы (не показываем в форме, но оставляем id для скриптов карты) -->
+      <input type="hidden" name="lat" id="lat" value="<%= typeof listing.lat === 'number' ? listing.lat : (listing.lat || '') %>">
+      <input type="hidden" name="lng" id="lng" value="<%= typeof listing.lng === 'number' ? listing.lng : (listing.lng || '') %>">
       <div id="ymap" data-yakey="d3d8195a-77c2-4c5b-903a-5876e929c27b" style="height:300px;margin:12px 0;border:1px solid #e0e0e0;border-radius:8px;"></div>
       <% if (listing.photo) { %>
-        <div style="margin-bottom:12px;">
-          <p><strong>Текущие фото:</strong> <small id="photos-count-note" style="color:#666"></small></p>
-          <% 
-            let photos = [];
-            if (listing.photos) {
-              try {
-                photos = JSON.parse(listing.photos);
-              } catch (e) {
-                photos = [listing.photo];
-              }
-            } else {
-              photos = [listing.photo];
-            }
-          %>
-          <input type="hidden" name="delete_photos" id="delete-photos-input">
-          <div id="delete-photos-multi" style="display:none;"></div>
-          <div id="photos-grid" style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <% photos.forEach(function(photo, index) { %>
-              <div class="photo-tile existing" data-filename="<%= photo %>" style="position: relative; width: 120px; height: 90px; border-radius: 6px; overflow: hidden; background: #f0f4f8;">
-                <img src="/images/<%= photo %>" alt="Фото <%= index + 1 %>" style="width: 100%; height: 100%; object-fit: cover; display: block;">
-                <button type="button" class="remove-photo" title="Удалить" aria-label="Удалить" style="position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer;">✕</button>
+          <div class="form-group">
+            <label>Фотографии</label>
+            <div class="photo-upload-container">
+              <% 
+                let photos = [];
+                if (listing.photos) {
+                  try {
+                    photos = JSON.parse(listing.photos);
+                  } catch (e) {
+                    photos = [listing.photo];
+                  }
+                } else {
+                  photos = [listing.photo];
+                }
+              %>
+              <input type="hidden" name="delete_photos" id="delete-photos-input">
+              <div id="delete-photos-multi" style="display:none;"></div>
+              <div class="photo-preview" id="photo-preview">
+                <% photos.forEach(function(photo, index) { %>
+                  <div class="photo-preview-item existing" data-filename="<%= photo %>">
+                    <img src="/images/<%= photo %>" alt="Фото <%= index + 1 %>">
+                    <button type="button" class="remove-photo" title="Удалить" aria-label="Удалить">✕</button>
+                  </div>
+                <% }) %>
               </div>
-            <% }) %>
-            <!-- Плитка добавления новых фото (append) -->
-            <label id="add-photo-tile" for="additional-photos-input" style="display:flex; align-items:center; justify-content:center; width: 120px; height: 90px; border: 2px dashed #b3d7f6; border-radius: 6px; color:#1976d2; cursor:pointer;">
-              + Добавить
-            </label>
-            <input id="additional-photos-input" type="file" name="additional_photos" accept="image/*" multiple style="display:none;">
+              <div class="upload-prompt">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin:0 auto 12px">
+                  <path d="M12 16V8M9 11L12 8L15 11M3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12Z" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <div style="font-size:16px;color:#374151;margin-bottom:4px">Нажмите для загрузки фотографий</div>
+                <div style="font-size:14px;color:#6b7280">или перетащите их сюда</div>
+              </div>
+              <input type="file" name="photos" id="photo-input" accept="image/*" multiple>
+            </div>
+            <div style="font-size:14px;color:#6b7280;margin-top:8px" id="photo-count">Выбрано фотографий: <%= photos.length %> (минимум 3)</div>
           </div>
         </div>
       <% } %>
-      <button type="submit">Сохранить</button>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+        <a href="/listings/<%= listing.id %>" class="btn btn-secondary">Назад к объявлению</a>
+      </div>
     </form>
-    <script>
-      (function(){
-        const grid = document.getElementById('photos-grid');
-        const delInput = document.getElementById('delete-photos-input');
-        const delMulti = document.getElementById('delete-photos-multi');
-        const addInput = document.getElementById('additional-photos-input');
-        const addTile = document.getElementById('add-photo-tile');
-        const countNote = document.getElementById('photos-count-note');
-        const deletions = new Set();
-        const addedFiles = []; // список новых файлов (File)
-
-        function fileKey(file){ return [file.name, file.size, file.lastModified].join(':'); }
-
-        function getCurrentCount(){
-          const existing = grid ? grid.querySelectorAll('.photo-tile.existing') : [];
-          const existingCount = existing.length - deletions.size;
-          const newCount = addedFiles.length;
-          return existingCount + newCount;
-        }
-        function sync() {
-          delInput.value = Array.from(deletions).join(',');
-          delMulti.innerHTML = '';
-          deletions.forEach(function(fn){
-            const inp = document.createElement('input');
-            inp.type = 'hidden';
-            inp.name = 'delete_photos';
-            inp.value = fn;
-            delMulti.appendChild(inp);
-          });
-          if (countNote) countNote.textContent = 'Всего будет: ' + getCurrentCount() + ' (макс. 10)';
-          // Блокировка добавления при достижении лимита
-          if (addTile && addInput) {
-            const total = getCurrentCount();
-            if (total >= 10) {
-              addTile.style.opacity = '0.5';
-              addTile.style.cursor = 'not-allowed';
-              addTile.style.pointerEvents = 'none';
-              addInput.disabled = true;
-            } else {
-              addTile.style.opacity = '';
-              addTile.style.cursor = 'pointer';
-              addTile.style.pointerEvents = '';
-              addInput.disabled = false;
-            }
-          }
-        }
-        function ensureLimitOrWarn(extra){
-          if (getCurrentCount() + extra > 10) {
-            alert('Максимум 10 фото на объявление');
-            return false;
-          }
-          return true;
-        }
-        function rebuildAddInput(){
-          const dt = new DataTransfer();
-          addedFiles.forEach(f => dt.items.add(f));
-          addInput.files = dt.files;
-        }
-        function createNewTile(file){
-          const url = URL.createObjectURL(file);
-          const wrap = document.createElement('div');
-          wrap.className = 'photo-tile new';
-          wrap.style.cssText = 'position:relative;width:120px;height:90px;border-radius:6px;overflow:hidden;background:#f0f4f8;';
-          wrap.setAttribute('data-new-key', fileKey(file));
-          wrap.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;display:block;">\
-            <button type="button" class="remove-new-photo" title="Убрать" aria-label="Убрать" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;cursor:pointer;">✕</button>';
-          grid.insertBefore(wrap, document.getElementById('add-photo-tile'));
-        }
-
-        if (grid) {
-          grid.addEventListener('click', function(e){
-            const btnRemoveExisting = e.target.closest('.remove-photo');
-            if (btnRemoveExisting) {
-              const tile = btnRemoveExisting.closest('.photo-tile');
-              if (!tile || tile.classList.contains('new')) return;
-              const filename = tile.getAttribute('data-filename');
-              if (!filename) return;
-              if (deletions.has(filename)) {
-                deletions.delete(filename);
-                tile.style.opacity = '';
-                tile.style.filter = '';
-                btnRemoveExisting.textContent = '✕';
-                btnRemoveExisting.disabled = false;
-              } else {
-                deletions.add(filename);
-                tile.style.opacity = '0.4';
-                tile.style.filter = 'grayscale(100%)';
-                btnRemoveExisting.textContent = '—';
-                btnRemoveExisting.disabled = false;
-              }
-              sync();
-              return;
-            }
-            const btnRemoveNew = e.target.closest('.remove-new-photo');
-            if (btnRemoveNew) {
-              const tile = btnRemoveNew.closest('.photo-tile.new');
-              if (!tile) return;
-              const key = tile.getAttribute('data-new-key');
-              const idx = addedFiles.findIndex(f => fileKey(f) === key);
-              if (idx !== -1) {
-                addedFiles.splice(idx,1);
-                rebuildAddInput();
-              }
-              tile.remove();
-              sync();
-              return;
-            }
-          });
-        }
-
-        if (addInput) {
-          addInput.addEventListener('change', function(){
-            const files = Array.from(addInput.files || []);
-            // Сколько ещё можно добавить
-            const slots = 10 - getCurrentCount();
-            if (slots <= 0) {
-              alert('Достигнут максимум 10 фото — добавление невозможно.');
-              // Вернём инпут к текущему состоянию добавленных файлов
-              rebuildAddInput();
-              return;
-            }
-            const accepted = files.slice(0, slots);
-            const overflow = files.length - accepted.length;
-            if (overflow > 0) {
-              alert('Можно добавить только ' + slots + ' фото (макс. 10). Лишние будут проигнорированы.');
-            }
-            accepted.forEach(function(file){
-              addedFiles.push(file);
-              createNewTile(file);
-            });
-            // Всегда пересобираем FileList из актуального массива addedFiles
-            rebuildAddInput();
-            sync();
-          });
-        }
-        sync();
-      })();
-    </script>
-    <p><a href="/listings/<%= listing.id %>">Назад к объявлению</a></p>
+    <!-- old photos-grid script removed; new photo upload handlers are defined below and match the 'Новое объявление' page -->
   </div>
   <!-- Яндекс.Карты: подставьте свой API-ключ в параметре apikey -->
   <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=d3d8195a-77c2-4c5b-903a-5876e929c27b"></script>
@@ -411,5 +392,133 @@
       }
     })();
   </script>
-</body>
-</html>
+    <script>
+      (function(){
+        const photoInput = document.getElementById('photo-input');
+        const photoPreview = document.getElementById('photo-preview');
+        const photoCount = document.getElementById('photo-count');
+        const uploadContainer = document.querySelector('.photo-upload-container');
+        const uploadPrompt = document.querySelector('.upload-prompt');
+        const deletePhotosInput = document.getElementById('delete-photos-input');
+      
+        let deletedPhotos = [];
+        let newFiles = [];
+      
+        // Обработка выбора файлов через input
+        photoInput.addEventListener('change', handleFiles);
+      
+        // Drag & Drop обработчики
+        uploadContainer.addEventListener('dragenter', preventDefault);
+        uploadContainer.addEventListener('dragover', preventDefault);
+        uploadContainer.addEventListener('dragleave', handleDragLeave);
+        uploadContainer.addEventListener('drop', handleDrop);
+      
+        // Обработка удаления существующих фотографий
+        const delMulti = document.getElementById('delete-photos-multi');
+        function refreshDeleteMulti(){
+          if (!delMulti) return;
+          delMulti.innerHTML = '';
+          deletedPhotos.forEach(function(fn){
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'delete_photos';
+            inp.value = fn;
+            delMulti.appendChild(inp);
+          });
+        }
+
+        document.querySelectorAll('.photo-preview-item.existing .remove-photo').forEach(btn => {
+          btn.addEventListener('click', function() {
+            const item = this.closest('.photo-preview-item');
+            const filename = item && item.dataset && item.dataset.filename;
+            if (!filename) return;
+            if (!deletedPhotos.includes(filename)) {
+              deletedPhotos.push(filename);
+            }
+            deletePhotosInput.value = JSON.stringify(deletedPhotos);
+            refreshDeleteMulti();
+            item.remove();
+            updatePhotoCount();
+            updateUploadPrompt();
+          });
+        });
+      
+        function preventDefault(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadContainer.classList.add('dragging');
+        }
+      
+        function handleDragLeave(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadContainer.classList.remove('dragging');
+        }
+      
+        function handleDrop(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadContainer.classList.remove('dragging');
+        
+          const dt = e.dataTransfer;
+          handleFiles({ target: { files: dt.files } });
+        }
+      
+        function handleFiles(e) {
+          const files = Array.from(e.target.files).filter(file => file.type.startsWith('image/'));
+          newFiles = [...newFiles, ...files];
+        
+          files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              const preview = document.createElement('div');
+              preview.className = 'photo-preview-item';
+            
+              const img = document.createElement('img');
+              img.src = e.target.result;
+            
+              const removeBtn = document.createElement('button');
+              removeBtn.className = 'remove-photo';
+              removeBtn.innerHTML = '✕';
+              removeBtn.addEventListener('click', () => {
+                preview.remove();
+                newFiles = newFiles.filter(f => f !== file);
+                updatePhotoCount();
+                updateUploadPrompt();
+              });
+            
+              preview.appendChild(img);
+              preview.appendChild(removeBtn);
+              photoPreview.appendChild(preview);
+            }
+            reader.readAsDataURL(file);
+          });
+        
+          updatePhotoCount();
+          updateUploadPrompt();
+        }
+      
+        function updatePhotoCount() {
+          const existingCount = document.querySelectorAll('.photo-preview-item.existing').length;
+          const totalCount = existingCount + newFiles.length;
+          photoCount.textContent = `Выбрано фотографий: ${totalCount} (минимум 3)`;
+        
+          if (totalCount >= 3) {
+            photoCount.style.color = '#059669';
+          } else {
+            photoCount.style.color = '#6b7280';
+          }
+        }
+      
+        function updateUploadPrompt() {
+          const hasPhotos = document.querySelectorAll('.photo-preview-item').length > 0;
+          uploadPrompt.style.display = hasPhotos ? 'none' : 'block';
+        }
+      
+        // Инициализация
+        updatePhotoCount();
+        updateUploadPrompt();
+      })();
+    </script>
+  </body>
+  </html>

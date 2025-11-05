@@ -225,12 +225,26 @@
             }
           }
           fetch(`/listings/${listingId}/approved`).then(r=>r.json()).then(data => {
-            busy = data.map(d => ({ s: new Date(d.start_date), e: new Date(d.end_date) }));
-              fetch(`/listings/${listingId}/pending`).then(r=>r.json()).then(pdata => {
-                pending = pdata.map(d => ({ s: new Date(d.start_date), e: new Date(d.end_date) }));
-                const root = document.getElementById('calendar');
-                buildCalendar(root, new Date());
+            busy = data.map(d => {
+              const s = new Date(d.start_date);
+              // set start at midday to avoid timezone/offset issues
+              s.setHours(12,0,0,0);
+              const e = new Date(d.end_date);
+              // mark end as end of day so the end date is treated inclusive
+              e.setHours(23,59,59,999);
+              return { s: s, e: e };
+            });
+            fetch(`/listings/${listingId}/pending`).then(r=>r.json()).then(pdata => {
+              pending = pdata.map(d => {
+                const s = new Date(d.start_date);
+                s.setHours(12,0,0,0);
+                const e = new Date(d.end_date);
+                e.setHours(23,59,59,999);
+                return { s: s, e: e };
               });
+              const root = document.getElementById('calendar');
+              buildCalendar(root, new Date());
+            });
           });
           document.getElementById('booking-form').addEventListener('submit', (ev)=>{
             if (!start || !end) { ev.preventDefault(); alert('Выберите даты заезда и выезда'); return; }

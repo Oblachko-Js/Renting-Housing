@@ -5,6 +5,193 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Личный кабинет</title>
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Scoped styles for profile page only */
+    #profile-page {
+      background: #fff;
+    }
+    #profile-page .container {
+      max-width: 980px;
+      padding: 32px;
+      margin: 0 auto;
+    }
+    #profile-page .header {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+    #profile-page .profile-avatar {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: #E3F2FD;
+      color: #1565C0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    #profile-page h1 {
+      font-size: 32px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin: 0;
+    }
+    #profile-page .role-badge {
+      display: inline-block;
+      background: #E8F5E9;
+      color: #2E7D32;
+      padding: 6px 12px;
+      border-radius: 100px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    #profile-page .info-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    #profile-page .info-title {
+      font-size: 24px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin: 0 0 24px 0;
+    }
+    #profile-page .info-row {
+      margin-bottom: 20px;
+    }
+    #profile-page .info-label {
+      font-size: 15px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    #profile-page .info-value {
+      font-size: 16px;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #profile-page .edit-icon {
+      cursor: pointer;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    #profile-page .edit-icon:hover {
+      opacity: 1;
+    }
+    #profile-page #display-name-form {
+      margin-top: 12px;
+    }
+    #profile-page #display-name-form input {
+      font-size: 16px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      margin-right: 8px;
+    }
+    #profile-page #display-name-form .btn {
+      padding: 8px 16px;
+      font-size: 14px;
+      border-radius: 6px;
+    }
+    
+    /* Стили для блока объявлений */
+    #profile-page .listings-section {
+      margin-top: 32px;
+    }
+    #profile-page .listings-title {
+      font-size: 24px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin-bottom: 20px;
+    }
+    #profile-page .listings-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    #profile-page .listing-card {
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      background: white;
+      transition: transform 0.2s;
+    }
+    #profile-page .listing-card:hover {
+      transform: translateY(-2px);
+    }
+    #profile-page .listing-image {
+      width: 100%;
+      height: 200px;
+      background: #f5f5f5;
+      position: relative;
+    }
+    #profile-page .listing-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #profile-page .listing-info {
+      padding: 16px;
+    }
+    #profile-page .listing-title {
+      font-size: 16px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #profile-page .listing-address {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #profile-page .listing-price {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2E7D32;
+    }
+    #profile-page .load-more {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      text-align: center;
+      background: #f5f5f5;
+      border: none;
+      border-radius: 8px;
+      color: #1976d2;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #profile-page .load-more:hover {
+      background: #e0e0e0;
+    }
+    @media (max-width: 900px) {
+      #profile-page .listings-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 600px) {
+      #profile-page .listings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -28,32 +215,64 @@
       </span>
     </div>
   </nav>
-  <div class="container">
-    <h1>Личный кабинет</h1>
-    <p><strong>Логин (email):</strong> <%= user.email || '—' %></p>
-    <p><strong>Отображаемое имя:</strong>
-      <span id="display-name-text"><%= user.display_name || '—' %></span>
-      <button id="edit-name-btn" class="btn" type="button" style="padding:4px 8px;margin-left:8px;">✏️</button>
-    </p>
-    <form id="display-name-form" method="POST" action="/profile/name" style="display:none;margin-bottom:16px;">
-      <input type="text" name="display_name" value="<%= user.display_name || '' %>" />
-      <button type="submit" class="btn">Сохранить</button>
-      <button type="button" id="cancel-name-btn" class="btn" style="background:#757575;">Отмена</button>
-    </form>
+  <div id="profile-page">
+    <div class="container">
+      <div class="header">
+        <div class="profile-avatar"><%= (user.display_name || user.username || 'A')[0].toUpperCase() %></div>
+        <div>
+          <h1>Личный кабинет</h1>
+          <div class="role-badge"><%= user.role === 'landlord' ? 'Арендодатель' : 'Арендатор' %></div>
+        </div>
+      </div>
 
-    <p><strong>Роль:</strong> <%= user.role === 'landlord' ? 'Арендодатель' : 'Арендатор' %></p>
+      <div class="info-card">
+        <h2 class="info-title">Основная информация</h2>
+        
+        <div class="info-row">
+          <div class="info-label">Email</div>
+          <div class="info-value"><%= user.email || '—' %></div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-label">Отображаемое имя</div>
+          <div class="info-value">
+            <span id="display-name-text"><%= user.display_name || user.email.split('@')[0] %></span>
+            <button id="edit-name-btn" class="edit-icon" type="button" style="border:none;background:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 5L18.5 8M11 19.5H21M4 15L14 5L17 8L7 18L3.5 19.5L4 15Z" stroke="#666666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+          <form id="display-name-form" method="POST" action="/profile/name" style="display:none;">
+            <input type="text" name="display_name" value="<%= user.display_name || '' %>" />
+            <button type="submit" class="btn">Сохранить</button>
+            <button type="button" id="cancel-name-btn" class="btn" style="background:#757575;">Отмена</button>
+          </form>
+        </div>
+      </div>
 
     <% if (user.role === 'landlord') { %>
-      <h2>Мои объявления</h2>
-      <ul class="listing-list">
-        <% listings.forEach(function(listing) { %>
-          <li class="listing-item">
-            <a href="/listings/<%= listing.id %>"><strong><%= listing.title %></strong></a><br>
-            <span><%= listing.price %> руб. — <%= listing.address %></span>
-          </li>
-        <% }) %>
-      </ul>
-      <a class="btn" href="/listings/new">+ Новое объявление</a>
+      <div class="listings-section">
+        <div class="listings-title">Мои объявления</div>
+        <div class="listings-grid">
+          <% listings.slice(0, 3).forEach(function(listing) { %>
+            <a href="/listings/<%= listing.id %>" class="listing-card">
+              <div class="listing-image">
+                <% if (listing.photo) { %>
+                  <img src="/images/<%= listing.photo %>" alt="<%= listing.title %>">
+                <% } %>
+              </div>
+              <div class="listing-info">
+                <div class="listing-title"><%= listing.title %></div>
+                <div class="listing-address"><%= listing.address %></div>
+                <div class="listing-price"><%= listing.price.toLocaleString('ru-RU') %> ₽</div>
+              </div>
+            </a>
+          <% }) %>
+        </div>
+        <% if (listings.length > 3) { %>
+          <button type="button" class="load-more" id="load-more-listings">Показать ещё</button>
+        <% } %>
+        <p style="margin-top: 20px;">
+          <a class="btn" href="/listings/new">+ Новое объявление</a>
+        </p>
+      </div>
     <% } %>
     <p>
       <button id="notify-toggle" class="btn" type="button" style="margin-top:12px;">Включить уведомления</button>
@@ -160,6 +379,56 @@
         const minTranslate = -step * Math.max(0, cards.length - visibleCount());
         baseTranslate = clamp(baseTranslate, minTranslate, maxTranslate);
         track.style.transform = `translateX(${baseTranslate}px)`;
+      });
+    })();
+
+    // Подгрузка дополнительных объявлений
+    (function initLoadMore() {
+      const loadMoreBtn = document.getElementById('load-more-listings');
+      if (!loadMoreBtn) return;
+
+      const grid = document.querySelector('.listings-grid');
+      const allListings = <%- JSON.stringify(listings) %>;
+      let currentIndex = 3;
+
+      loadMoreBtn.addEventListener('click', () => {
+        const nextListings = allListings.slice(currentIndex, currentIndex + 3);
+        
+        nextListings.forEach(listing => {
+          const card = document.createElement('a');
+          card.href = `/listings/${listing.id}`;
+          card.className = 'listing-card';
+          card.innerHTML = `
+            <div class="listing-image">
+              ${listing.photo ? `<img src="/images/${listing.photo}" alt="${listing.title}">` : ''}
+            </div>
+            <div class="listing-info">
+              <div class="listing-title">${listing.title}</div>
+              <div class="listing-address">${listing.address}</div>
+              <div class="listing-price">${listing.price.toLocaleString('ru-RU')} ₽</div>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+
+        currentIndex += 3;
+        
+        // Скрыть кнопку если больше нет объявлений
+        if (currentIndex >= allListings.length) {
+          loadMoreBtn.style.display = 'none';
+        }
+
+        // Плавная анимация появления
+        const newCards = Array.from(grid.children).slice(-nextListings.length);
+        newCards.forEach(card => {
+          card.style.opacity = '0';
+          card.style.transform = 'translateY(20px)';
+          requestAnimationFrame(() => {
+            card.style.transition = 'opacity 0.3s, transform 0.3s';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+          });
+        });
       });
     })();
   </script>

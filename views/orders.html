@@ -24,9 +24,21 @@
   </nav>
   <div class="container">
     <h1>Заказы</h1>
+    <% const makeLink = (s, p) => { const base = '/orders'; if(!s || s==='all') return base + (p && p>1 ? ('?page=' + p) : ''); return base + '?status=' + s + (p && p>1 ? ('&page=' + p) : ''); } %>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+      <div style="font-weight:600;margin-right:8px;color:#333;">Фильтр:</div>
+      <a href="<%= makeLink('all',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'all' ? 'background:#e3f2fd;color:#0d47a1;' : 'background:transparent;color:#1976d2;' %>">Все</a>
+      <a href="<%= makeLink('pending',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'pending' ? 'background:#fff3e0;color:#ef6c00;' : 'background:transparent;color:#1976d2;' %>">В ожидании</a>
+      <a href="<%= makeLink('approved',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'approved' ? 'background:#e8f5e9;color:#2e7d32;' : 'background:transparent;color:#1976d2;' %>">Подтверждённые</a>
+      <a href="<%= makeLink('rejected',1) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= filter === 'rejected' ? 'background:#ffebee;color:#c62828;' : 'background:transparent;color:#1976d2;' %>">Отклонённые</a>
+    </div>
     <% if (error === 'overlap') { %>
       <div class="error" style="margin-bottom: 16px;">
         Невозможно подтвердить бронь: выбранные даты пересекаются с уже подтверждённой арендой
+      </div>
+    <% } else if (error === 'confirm_needed') { %>
+      <div class="error" style="margin-bottom: 16px; background:#fff8e1;color:#8a6d00;border:1px solid #ffecb3;">
+        Для подтверждения этой заявки требуется подтверждение — она пересекается с уже подтверждённой бронью. Нажмите "Подтвердить" и подтвердите действие в диалоге.
       </div>
     <% } %>
     <% if (!bookings || bookings.length === 0) { %>
@@ -43,14 +55,55 @@
             </div>
             <% if (b.status === 'pending') { %>
               <div style="margin-top:8px;">
-                <form method="POST" action="/bookings/<%= b.id %>/approve" style="display:inline;margin-right:6px;"><button class="btn" type="submit">Подтвердить</button></form>
-                <form method="POST" action="/bookings/<%= b.id %>/reject" style="display:inline;"><button class="btn" type="submit" style="background:#c62828;">Отклонить</button></form>
+                <% if (b.overlaps_approved) { %>
+                  <div style="padding:8px;background:#fff8e1;border:1px solid #ffecb3;border-radius:6px;margin-bottom:8px;color:#8a6d00;">
+                    Внимание: даты пересекаются с подтверждённой бронью (<%= new Date(b.overlap.start_date).toLocaleDateString('ru-RU') %> — <%= new Date(b.overlap.end_date).toLocaleDateString('ru-RU') %>, арендатора: <%= b.overlap.tenant_name %>). При подтверждении текущей заявки предыдущая бронь будет отменена.
+                  </div>
+                <% } %>
+                <form method="POST" action="/bookings/<%= b.id %>/approve" style="display:inline;margin-right:6px;" data-overlap="<%= b.overlaps_approved ? '1' : '0' %>" onsubmit="return handleApprove(event)">
+                  <button class="btn" type="submit">Подтвердить</button>
+                </form>
+                <form method="POST" action="/bookings/<%= b.id %>/reject" style="display:inline;">
+                  <button class="btn" type="submit" style="background:#c62828;">Отклонить</button>
+                </form>
               </div>
             <% } %>
           </li>
         <% }) %>
       </ul>
+      <% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <% const prevPage = page > 1 ? page - 1 : null; %>
+          <% const nextPage = page < totalPages ? page + 1 : null; %>
+          <a href="<%= prevPage ? makeLink(filter, prevPage) : '#' %>" style="padding:6px 10px;background:#f1f1f1;border-radius:6px;text-decoration:none;color:#333; <%= prevPage ? '' : 'opacity:0.5;pointer-events:none;' %>">‹</a>
+          <% for(let i=1;i<=totalPages;i++){ %>
+            <a href="<%= makeLink(filter, i) %>" style="padding:6px 10px;border-radius:6px;text-decoration:none; <%= page===i ? 'background:#1976d2;color:#fff;' : 'background:#fff;border:1px solid #e0e0e0;color:#1976d2;' %>"><%= i %></a>
+          <% } %>
+          <a href="<%= nextPage ? makeLink(filter, nextPage) : '#' %>" style="padding:6px 10px;background:#f1f1f1;border-radius:6px;text-decoration:none;color:#333; <%= nextPage ? '' : 'opacity:0.5;pointer-events:none;' %>">›</a>
+        </div>
+      <% } %>
     <% } %>
   </div>
+  <script>
+    function handleApprove(ev) {
+      ev = ev || window.event;
+      const form = ev.target || ev.srcElement;
+      // find data-overlap attribute (form may be the button, so walk up)
+      let f = form;
+      if (f.tagName && f.tagName.toLowerCase() !== 'form') {
+        f = form.closest('form');
+      }
+      if (!f) return true;
+      const overlap = f.getAttribute('data-overlap') === '1';
+      if (overlap) {
+        const ok = confirm('Эта заявка пересекается с уже подтверждённой бронью. Подтвердить и отменить предыдущую бронь?');
+        if (!ok) return false;
+        // добавить скрытое поле force=1
+        const inp = document.createElement('input'); inp.type='hidden'; inp.name='force'; inp.value='1';
+        f.appendChild(inp);
+      }
+      return true;
+    }
+  </script>
 </body>
 </html>
