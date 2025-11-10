@@ -190,6 +190,21 @@
         flex-direction: column;
       }
     }
+    #new-listing-page {
+    background: #fff;
+    min-height: 100vh;
+    box-sizing: border-box;
+    }
+    #new-listing-page .container {
+      max-width: 980px;           /* или 100% если хочешь от края до края */
+      padding: 32px;
+      margin: 0 auto;
+      background: transparent;    /* белый фон теперь от #new-listing-page */
+      box-shadow: none;           /* убираем тень, чтобы не было "островка" */
+    }
+    body {
+      background: none !important;   /* полностью убираем любой глобальный фон */
+    }
   </style>
 </head>
 <body>
@@ -480,110 +495,148 @@
   </script>
 
   <script>
-    (function(){
-      const photoInput = document.getElementById('photo-input');
-      const photoPreview = document.getElementById('photo-preview');
-      const photoCount = document.getElementById('photo-count');
-      const uploadContainer = document.querySelector('.photo-upload-container');
-      const uploadPrompt = document.querySelector('.upload-prompt');
+  (function(){
+    const photoInput = document.getElementById('photo-input');
+    const photoPreview = document.getElementById('photo-preview');
+    const photoCount = document.getElementById('photo-count');
+    const uploadContainer = document.querySelector('.photo-upload-container');
+    const uploadPrompt = document.querySelector('.upload-prompt');
+    const submitBtn = document.querySelector('button[type="submit"]');
+
+    // Храним файлы + их хеши
+    let files = []; // массив объектов: { file, hash, id }
+
+    // Генерируем уникальный ID
+    let counter = 0;
+    function genId() { return ++counter; }
+
+    // Получаем SHA-256 хеш файла (асинхронно)
+    async function getFileHash(file) {
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Обновляем input.files
+    function updateInputFiles() {
+      const dt = new DataTransfer();
+      files.forEach(item => dt.items.add(item.file));
+      photoInput.files = dt.files;
+    }
+
+    // Обновляем счётчик и кнопку
+    function updateUI() {
+      photoCount.textContent = `Выбрано фотографий: ${files.length} (минимум 3)`;
+      photoCount.style.color = files.length >= 3 ? '#059669' : '#6b7280';
+      if (submitBtn) submitBtn.disabled = files.length < 3;
       
-      let files = [];
+      uploadPrompt.style.display = files.length === 0 ? 'block' : 'none';
+    }
+
+    // Перерисовываем превью
+    function showPreviews() {
+      photoPreview.innerHTML = '';
       
-      // Обработка выбора файлов через input
-      photoInput.addEventListener('change', handleFiles);
-      
-      // Drag & Drop обработчики
-      uploadContainer.addEventListener('dragenter', preventDefault);
-      uploadContainer.addEventListener('dragover', preventDefault);
-      uploadContainer.addEventListener('dragleave', handleDragLeave);
-      uploadContainer.addEventListener('drop', handleDrop);
-      
-      function preventDefault(e) {
+      files.forEach((item, index) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const preview = document.createElement('div');
+          preview.className = 'preview-item';
+          preview.dataset.index = index;
+
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.alt = `Фото ${index + 1}`;
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'remove-photo';
+          removeBtn.innerHTML = '×';
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removePhoto(index);
+
+          preview.appendChild(img);
+          preview.appendChild(removeBtn);
+          photoPreview.appendChild(preview);
+        };
+        reader.readAsDataURL(item.file);
+      });
+    }
+
+    // Удаление по индексу
+    function removePhoto(index) {
+      files.splice(index, 1);
+      updateInputFiles();
+      updateUI();
+      showPreviews();
+    }
+
+    // Основная функция добавления файлов
+    async function addFiles(newFiles) {
+      const validFiles = Array.from(newFiles).filter(f => f.type.startsWith('image/'));
+      if (validFiles.length === 0) return;
+
+      // Получаем хеши для новых файлов
+      const hashPromises = validFiles.map(async (file) => {
+        const hash = await getFileHash(file);
+        return { file, hash, id: genId() };
+      });
+
+      const newItems = await Promise.all(hashPromises);
+
+      // Фильтруем дубли: если хеш уже есть — не добавляем
+      const existingHashes = new Set(files.map(f => f.hash));
+      const uniqueNewItems = newItems.filter(item => !existingHashes.has(item.hash));
+
+      if (uniqueNewItems.length === 0) {
+        alert('Все выбранные фото уже загружены!');
+        return;
+      }
+
+      if (uniqueNewItems.length < newItems.length) {
+        alert(`Добавлено ${uniqueNewItems.length} из ${newItems.length} (дубли пропущены)`);
+      }
+
+      files = [...files, ...uniqueNewItems];
+      updateInputFiles();
+      updateUI();
+      showPreviews();
+    }
+
+    // Обработчики
+    photoInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        addFiles(e.target.files);
+      }
+    });
+
+    // Drag & Drop
+    ['dragenter', 'dragover'].forEach(event => {
+      uploadContainer.addEventListener(event, e => {
         e.preventDefault();
         e.stopPropagation();
-        uploadContainer.classList.add('dragging');
-      }
-      
-      function handleDragLeave(e) {
+        uploadContainer.classList.add('drag-over');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(event => {
+      uploadContainer.addEventListener(event, e => {
         e.preventDefault();
         e.stopPropagation();
-        uploadContainer.classList.remove('dragging');
+        uploadContainer.classList.remove('drag-over');
+      });
+    });
+
+    uploadContainer.addEventListener('drop', e => {
+      if (e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files);
       }
-      
-      function handleDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        uploadContainer.classList.remove('dragging');
-        
-        const dt = e.dataTransfer;
-        const newFiles = dt.files;
-        
-        handleFiles({ target: { files: newFiles } });
-      }
-      
-      function handleFiles(e) {
-        const newFiles = Array.from(e.target.files).filter(file => file.type.startsWith('image/'));
-        files = [...files, ...newFiles];
-        updatePhotoCount();
-        showPreviews();
-      }
-      
-      function updatePhotoCount() {
-        photoCount.textContent = `Выбрано фотографий: ${files.length} (минимум 3)`;
-        if (files.length >= 3) {
-          photoCount.style.color = '#059669';
-        } else {
-          photoCount.style.color = '#6b7280';
-        }
-      }
-      
-      function showPreviews() {
-        // Очищаем предыдущие превью
-        photoPreview.innerHTML = '';
-        
-        // Показываем/скрываем prompt
-        if (files.length > 0) {
-          uploadPrompt.style.display = 'none';
-        } else {
-          uploadPrompt.style.display = 'block';
-        }
-        
-        // Создаем превью для каждого файла
-        files.forEach((file, index) => {
-          const reader = new FileReader();
-          
-          reader.onload = function(e) {
-            const preview = document.createElement('div');
-            preview.className = 'photo-preview-item';
-            
-            const img = document.createElement('img');
-            img.src = e.target.result;
-            
-            const removeBtn = document.createElement('button');
-            removeBtn.className = 'remove-photo';
-            removeBtn.innerHTML = '×';
-            removeBtn.onclick = () => removePhoto(index);
-            
-            preview.appendChild(img);
-            preview.appendChild(removeBtn);
-            photoPreview.appendChild(preview);
-          }
-          
-          reader.readAsDataURL(file);
-        });
-      }
-      
-      function removePhoto(index) {
-        files.splice(index, 1);
-        updatePhotoCount();
-        showPreviews();
-        
-        // Если это был последний файл, очищаем input
-        if (files.length === 0) {
-          photoInput.value = '';
-        }
-      }
-    })();
-  </script>
+    });
+
+    // Инициализация
+    updateUI();
+    showPreviews();
+  })();
+</script>
 </body>
 </html>

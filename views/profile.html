@@ -191,6 +191,30 @@
         grid-template-columns: 1fr;
       }
     }
+    #profile-page {
+    background: #fff;
+    min-height: 100vh;
+    box-sizing: border-box;
+    }
+    #profile-page .container {
+      max-width: 980px;
+      padding: 32px;
+      margin: 0 auto;
+      background: transparent !important;     /* белый фон теперь от #profile-page */
+      box-shadow: none !important;            /* убираем "островок" */
+      border-radius: 0 !important;
+    }
+    body {
+      background: none !important;   /* убиваем любой глобальный градиент/цвет навсегда */
+    }
+
+    /* Опционально: на десктопе чуть уже, чтобы не растягивать на 100% ширины */
+    @media (min-width: 1024px) {
+      #profile-page .container {
+        max-width: 900px;
+        padding: 32px 0;
+      }
+    }
   </style>
 </head>
 <body>

@@ -8,7 +8,14 @@
 </head>
 <body>
   <nav class="navbar">
-    <button class="burger" type="button" aria-label="Меню" onclick="(function(e){e.preventDefault();var el=document.querySelector('.nav-links');var btn=document.querySelector('.burger');if(el){el.classList.toggle('show');btn.setAttribute('aria-expanded',el.classList.contains('show'))}})()">☰</button>
+    <button 
+      class="burger" 
+      type="button" 
+      aria-label="Меню" 
+      aria-expanded="false"
+      onclick="toggleMenu(event)">
+      ☰
+    </button>
     <div class="nav-links">
       <a href="/">Главная</a>
       <% if (user) { %>
@@ -352,5 +359,17 @@
   </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/main.js"></script>
+  <script>
+  function toggleMenu(e) {
+      e.preventDefault();
+      const menu = document.querySelector('.nav-links');
+      const btn = document.querySelector('.burger');
+      if (menu && btn) {
+        menu.classList.toggle('show');
+        const isOpen = menu.classList.contains('show');
+        btn.setAttribute('aria-expanded', isOpen);
+      }
+    }
+</script>
 </body>
 </html>
