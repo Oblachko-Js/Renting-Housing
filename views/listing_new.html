@@ -247,8 +247,130 @@
 
           <div class="form-group">
             <label>Цена</label>
-            <input type="number" name="price" min="1" max="9223372036854775807" step="1" required placeholder="Стоимость в рублях">
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="price-input" type="number" name="price" min="1" max="9223372036854775807" step="1" required placeholder="Стоимость в рублях">
+              <button type="button" id="estimate-btn" class="btn" style="padding:8px 12px;">Оценить</button>
+            </div>
+            <div id="recommended-price" style="margin-top:8px;color:#2e7d32;"></div>
           </div>
+          <script>
+            document.addEventListener('DOMContentLoaded', function(){
+              const btn = document.getElementById('estimate-btn');
+              const priceEl = document.getElementById('price-input');
+              const titleEl = document.querySelector('input[name="title"]');
+              const descEl = document.querySelector('textarea[name="description"]');
+              const addrEl = document.querySelector('input[name="address"]');
+              const districtEl = document.querySelector('input[name="district"]');
+              const housingEl = document.querySelector('select[name="housing_type"]');
+              const roomsEl = document.querySelector('input[name="rooms"]');
+              const amenitiesEls = Array.from(document.querySelectorAll('input[name="amenities"]'));
+
+              // Disable by default until required fields filled
+              if (btn) {
+                btn.disabled = true;
+                btn.title = 'Заполните обязательные поля, чтобы получить оценку';
+              }
+
+              function amenitiesSelected(){
+                return amenitiesEls.some(function(ch){ return ch.checked; });
+              }
+
+              function isFormValid() {
+                return titleEl && titleEl.value.trim() && descEl && descEl.value.trim() && addrEl && addrEl.value.trim() && priceEl && Number(priceEl.value) > 0 && amenitiesSelected();
+              }
+
+              function missingFields(){
+                const miss = [];
+                if (!titleEl || !titleEl.value.trim()) miss.push('Заголовок');
+                if (!descEl || !descEl.value.trim()) miss.push('Описание');
+                if (!addrEl || !addrEl.value.trim()) miss.push('Адрес');
+                if (!priceEl || !(Number(priceEl.value) > 0)) miss.push('Цена');
+                if (!amenitiesSelected()) miss.push('Удобства (отметьте хотя бы одно)');
+                return miss;
+              }
+
+              function updateButtonState(){
+                if (!btn) return;
+                const miss = missingFields();
+                const rp = document.getElementById('recommended-price');
+                if (isFormValid()){
+                  btn.disabled = false;
+                  btn.title = '';
+                  if (rp && rp.dataset && rp.dataset.info === 'missing') {
+                    rp.innerHTML = '';
+                    rp.removeAttribute('data-info');
+                  }
+                } else {
+                  btn.disabled = true;
+                  btn.title = 'Заполните обязательные поля, чтобы получить оценку';
+                  if (rp) {
+                    rp.innerHTML = `<div style="color:#c62828;">Невозможно оценить: заполните поля — ${miss.join(', ')}.</div>`;
+                    rp.dataset.info = 'missing';
+                  }
+                }
+              }
+
+              // attach listeners to required fields
+              [titleEl, descEl, addrEl, priceEl, districtEl, housingEl, roomsEl].forEach(function(el){ if(el) el.addEventListener('input', updateButtonState); });
+              amenitiesEls.forEach(function(ch){ ch.addEventListener('change', updateButtonState); });
+
+              async function estimate(){
+                if (!isFormValid()) {
+                  const miss = missingFields();
+                  document.getElementById('recommended-price').innerHTML = `<div style="color:#c62828;">Невозможно оценить: заполните поля — ${miss.join(', ')}.</div>`;
+                  return;
+                }
+                try {
+                  btn.disabled = true;
+                  const prevText = btn.innerText;
+                  btn.innerText = 'Оценка...';
+
+                  const payload = {
+                    price: Number(priceEl.value || 0),
+                    district: districtEl && districtEl.value || '',
+                    housing_type: housingEl && housingEl.value || '',
+                    rooms: roomsEl && Number(roomsEl.value) || null,
+                    address: addrEl && addrEl.value || '',
+                    title: titleEl && titleEl.value || '',
+                    description: descEl && descEl.value || '',
+                    amenities: amenitiesEls.filter(c=>c.checked).map(c=>c.value)
+                  };
+
+                  const resp = await fetch('/api/recommend_price', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+                  const data = await resp.json();
+                  let html = '';
+                  if (!data) {
+                    html = '<div style="color:#c62828;">Ошибка: сервис недоступен.</div>';
+                  } else {
+                    html = '<strong>Рекомендации:</strong><ul style="margin:6px 0 0;padding-left:18px;">';
+                    if (data.seasons) {
+                      const seasonNames = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' };
+                      for (const s of Object.keys(data.seasons)) {
+                        const name = seasonNames[s] || (s.charAt(0).toUpperCase()+s.slice(1));
+                        html += `<li>${name}: ${data.seasons[s]} руб./мес.</li>`;
+                      }
+                    }
+                    html += '</ul>';
+                    if (data.recommended) html += `<div style="margin-top:6px;">Рекомендованная цена: <strong>${data.recommended} руб./мес.</strong></div>`;
+                  }
+                  const rp_el = document.getElementById('recommended-price');
+                  if (rp_el) { rp_el.innerHTML = html; rp_el.removeAttribute('data-info'); }
+
+                  btn.innerText = prevText;
+                  updateButtonState();
+                } catch (e) {
+                  console.error(e);
+                  document.getElementById('recommended-price').innerHTML = '<div style="color:#c62828;">Ошибка запроса.</div>';
+                  btn.disabled = false;
+                }
+              }
+
+              if (btn) btn.addEventListener('click', estimate);
+
+              // init state
+              updateButtonState();
+            });
+          </script>     
 
           <div class="form-group">
             <label>Адрес</label>

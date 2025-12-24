@@ -91,6 +91,36 @@
     <% } %>
     <p><strong>Описание:</strong> <%= listing.description %></p>
     <p><strong>Цена:</strong> <%= listing.price %> руб./мес.</p>
+    <% if (seasonal_prices && seasonal_prices.seasons) { %>
+      <div style="margin-top:8px;">
+        <button id="toggle-seasonal" type="button" class="btn" aria-expanded="false" style="margin-bottom:8px;">Показать ориентировочные цены</button>
+        <div id="seasonal-prices" style="display:none;padding:10px;background:#f7f7ff;border-radius:8px;">
+          <strong>Ориентировочные цены по сезонам:</strong>
+          <ul style="margin:8px 0 0;padding-left:18px;">
+            <% const seasonMap = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' }; %>
+            <% for (const s in seasonal_prices.seasons) { %>
+              <li><strong><%= seasonMap[s] || (s.charAt(0).toUpperCase() + s.slice(1)) %>:</strong> <%= seasonal_prices.seasons[s] %> руб./мес.</li>
+            <% } %>
+          </ul>
+          <% if (seasonal_prices.recommended) { %>
+            <div id="seasonal-recommended" style="margin-top:8px;color:#2e7d32;">Рекомендованная цена сейчас: <strong><%= seasonal_prices.recommended %> руб./мес.</strong></div>
+          <% } %>
+        </div>
+      </div>
+      <script>
+        document.addEventListener('DOMContentLoaded', function(){
+          const btn = document.getElementById('toggle-seasonal');
+          const box = document.getElementById('seasonal-prices');
+          if (!btn || !box) return;
+          btn.addEventListener('click', function(){
+            const isHidden = box.style.display === 'none' || box.style.display === '';
+            box.style.display = isHidden ? 'block' : 'none';
+            btn.innerText = isHidden ? 'Свернуть ориентировочные цены' : 'Показать ориентировочные цены';
+            btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+          });
+        });
+      </script>
+    <% } %>
     <p><strong>Адрес:</strong> <%= listing.address %></p>
     <p><strong>Район:</strong> <%= listing.district || '—' %></p>
     <% 

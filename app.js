@@ -102,6 +102,44 @@ app.use(async (req, res, next) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// helper: простой http клиент для вызова Python сервиса прогнозов
+function callPriceService(path, method = "GET", body = null) {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: process.env.PRICE_SERVICE_HOST || "127.0.0.1",
+      port: Number(process.env.PRICE_SERVICE_PORT || 8000),
+      path: path,
+      method: method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+    };
+    const req = http.request(opts, (res) => {
+      let data = "";
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        try {
+          return resolve(JSON.parse(data));
+        } catch (e) {
+          return resolve(null);
+        }
+      });
+    });
+    req.on("error", (e) => reject(e));
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+// endpoint для клиента: оценить цену по атрибутам (в т.ч. для формы создания)
+app.post("/api/recommend_price", async (req, res) => {
+  try {
+    const payload = req.body;
+    const ans = await callPriceService("/predict", "POST", payload);
+    res.json(ans || {});
+  } catch (e) {
+    res.status(500).json({ error: "price_service_unreachable" });
+  }
+});
+
 // Папка для статики
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -770,6 +808,17 @@ app.get("/listings/:id", async (req, res) => {
     );
     isFavorite = fav.rows.length > 0;
   }
+
+  // Попытка получить сезонные цены из Python сервиса прогнозирования
+  let seasonalPrices = null;
+  try {
+    seasonalPrices = await callPriceService(
+      `/predict?listing_id=${listing.id}`
+    );
+  } catch (_) {
+    seasonalPrices = null;
+  }
+
   res.render("listing_view", {
     listing,
     canEdit,
@@ -777,6 +826,7 @@ app.get("/listings/:id", async (req, res) => {
     reviews: reviews.rows,
     avg_rating: avg.rows[0].avg_rating,
     isFavorite,
+    seasonal_prices: seasonalPrices,
     unreadCount: res.locals.unreadCount,
   });
 });
@@ -790,10 +840,19 @@ app.get("/listings/:id/edit", async (req, res) => {
   if (!req.session.userId || req.session.userId !== listing.owner_id) {
     return res.send("Нет доступа");
   }
+  // рекомендованная цена для редактирования
+  let recommended = null;
+  try {
+    const r = await callPriceService(`/predict?listing_id=${listing.id}`);
+    recommended = r && r.recommended ? r.recommended : null;
+  } catch (_) {
+    recommended = null;
+  }
   res.render("listing_edit", {
     listing,
     unreadCount: res.locals.unreadCount,
     error: req.query.error,
+    recommended_price: recommended,
   });
 });
 
