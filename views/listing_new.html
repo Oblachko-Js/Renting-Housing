@@ -333,7 +333,9 @@
                     address: addrEl && addrEl.value || '',
                     title: titleEl && titleEl.value || '',
                     description: descEl && descEl.value || '',
-                    amenities: amenitiesEls.filter(c=>c.checked).map(c=>c.value)
+                    amenities: amenitiesEls.filter(c=>c.checked).map(c=>c.value),
+                    center_distance_km: Number(document.getElementById('center-distance-km').value || 0),
+                    metro_distance_min: Number(document.getElementById('metro-distance-min').value || 300)
                   };
 
                   const resp = await fetch('/api/recommend_price', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
@@ -411,6 +413,8 @@
           <!-- Скрытые поля для координат -->
           <input type="hidden" name="lat" id="lat">
           <input type="hidden" name="lng" id="lng">
+          <input type="hidden" name="center_distance_km" id="center-distance-km" value="0">
+          <input type="hidden" name="metro_distance_min" id="metro-distance-min" value="0">
           
           <div class="form-group">
             <label>Расположение на карте</label>
@@ -455,9 +459,80 @@
       var defaultLat = parseFloat(latEl.value) || 55.751244;
       var defaultLng = parseFloat(lngEl.value) || 37.618423;
 
+      // Центр Санкт-Петербурга
+      var CENTER_LAT = 59.9311;
+      var CENTER_LNG = 30.3609;
+
       function setLatLng(lat, lng) {
         if (latEl) latEl.value = Number(lat).toFixed(6);
         if (lngEl) lngEl.value = Number(lng).toFixed(6);
+        updateDistanceToCenter(lat, lng);
+        updateDistanceToMetro(lat, lng);
+      }
+
+      function haversineDistance(lat1, lng1, lat2, lng2) {
+        var R = 6371; // Радиус Земли в км
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLng = (lng2 - lng1) * Math.PI / 180;
+        var a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+      }
+
+      function updateDistanceToCenter(lat, lng) {
+        var centerDistEl = document.getElementById('center-distance-km');
+        if (!centerDistEl) return;
+        var dist = haversineDistance(lat, lng, CENTER_LAT, CENTER_LNG);
+        centerDistEl.value = dist.toFixed(2);
+      }
+
+      function updateDistanceToMetro(lat, lng) {
+        var metroDistEl = document.getElementById('metro-distance-min');
+        if (!metroDistEl || !window.ymaps) return;
+        
+        // Use Yandex API to search for nearest metro station
+        ymaps.ready(function(){
+          // Search for metro stations (категория: Метро) near current position
+          var searchControl = new ymaps.control.SearchControl({ 
+            options: { provider: 'yandex#search' } 
+          });
+          
+          // Use geocoder to find nearest metro
+          ymaps.geocode('Метро рядом с ' + lat + ',' + lng, {
+            bbox: [
+              [lat - 0.05, lng - 0.05],  // ~5km radius
+              [lat + 0.05, lng + 0.05]
+            ]
+          }).then(function(res){
+            var minDist = Infinity;
+            var geoObjects = res.geoObjects;
+            
+            // Look through results for metro stations
+            for (var i = 0; i < geoObjects.getLength(); i++) {
+              var obj = geoObjects.get(i);
+              var objName = obj.properties.get('name') || '';
+              
+              // Check if it's a metro station
+              if (objName.toLowerCase().indexOf('метро') !== -1 || 
+                  objName.toLowerCase().indexOf('станция') !== -1) {
+                var objCoords = obj.geometry.getCoordinates();
+                var dist = haversineDistance(lat, lng, objCoords[0], objCoords[1]);
+                minDist = Math.min(minDist, dist);
+              }
+            }
+            
+            if (minDist < Infinity) {
+              metroDistEl.value = (minDist * 1000).toFixed(0); // convert km to meters, round
+            } else {
+              // Fallback: use average distance if search fails
+              metroDistEl.value = '300'; // ~5-10 min walk
+            }
+          }).catch(function(){
+            metroDistEl.value = '300'; // default fallback
+          });
+        });
       }
 
       function extractDistrictFromComponents(components) {

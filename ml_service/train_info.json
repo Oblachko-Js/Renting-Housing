@@ -1,1 +1,52 @@
-{"mae_cv": 109100.92072139303, "n_train": 1005}
+{
+  "n_train": 857,
+  "n_total": 1009,
+  "cv_mae": 0.19664550988772964,
+  "mae_holdout": 27503.01307720331,
+  "rmse_holdout": 194814.7725907942,
+  "r2_holdout": -84.58643611289693,
+  "best_params": null,
+  "use_log": true,
+  "importances_top5": [
+    {
+      "feature": "days_since_created",
+      "importance": 0.10309387517624843
+    },
+    {
+      "feature": "median_price_district",
+      "importance": 0.04238795047966443
+    },
+    {
+      "feature": "area_x_metro_inv",
+      "importance": 0.038953755603269
+    },
+    {
+      "feature": "area_x_center_inv",
+      "importance": 0.016458052215653413
+    },
+    {
+      "feature": "center_dist_sq",
+      "importance": 0.014956438329970012
+    },
+    {
+      "feature": "longitude",
+      "importance": 0.013449205249915858
+    },
+    {
+      "feature": "metro_dist_sq",
+      "importance": 0.005873850879902526
+    },
+    {
+      "feature": "views_count",
+      "importance": 0.004296670754789539
+    },
+    {
+      "feature": "metro_distance_min",
+      "importance": 0.0031591087503556325
+    },
+    {
+      "feature": "build_year",
+      "importance": 0.0018179971466122657
+    }
+  ]
+}

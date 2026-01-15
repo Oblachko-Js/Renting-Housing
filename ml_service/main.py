@@ -9,7 +9,7 @@ import math
 import pandas as pd
 import numpy as np
 import joblib
-from catboost import CatBoostRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -18,6 +18,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import cross_val_score, RandomizedSearchCV, train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.inspection import permutation_importance
+from tqdm import tqdm
 import scipy.stats as stats
 import math
 
@@ -62,7 +63,10 @@ def load_synthetic(or_generate=True, n=1000):
     except Exception:
         if or_generate:
             # lazy import of generator
-            from .generate_synthetic import generate_synthetic
+            try:
+                from .generate_synthetic import generate_synthetic
+            except ImportError:
+                from generate_synthetic import generate_synthetic
             df = generate_synthetic(N=n, out_csv=True, out_path=SYN_CSV)
             return df
         raise
@@ -139,6 +143,7 @@ def assemble_db_df(conn, synth_stats=None):
         rec['latitude'] = float(lat) if lat else float(synth_stats['latitude_mean'])
         rec['longitude'] = float(lng) if lng else float(synth_stats['longitude_mean'])
         rec['center_distance_km'] = float(synth_stats['center_distance_mean'])
+        rec['metro_distance_min'] = int(synth_stats.get('metro_distance_median', 300))  # default ~5-10 min walk
         rec['build_year'] = int(synth_stats['build_year_median'])
         rec['house_age'] = 2024 - rec['build_year']
         # amenities string => count
@@ -206,6 +211,7 @@ def compute_synth_stats(df):
         'rooms_mode': int(df['rooms'].mode().iloc[0]),
         'floors_total_mean': float(df['floors_total'].mean()),
         'metro_distance_mean': float(df['metro_distance_min'].mean()),
+        'metro_distance_median': float(df['metro_distance_min'].median()),
         'latitude_mean': float(df['latitude'].mean()),
         'longitude_mean': float(df['longitude'].mean()),
         'center_distance_mean': float(df['center_distance_km'].mean()),
@@ -224,12 +230,12 @@ def train_model_endpoint(samples:int=1000, tune:bool=False, n_iter:int=20, use_l
         synth = load_synthetic(or_generate=True, n=samples)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get synthetic data: {e}")
-    stats = compute_synth_stats(synth)
+    synth_stats = compute_synth_stats(synth)
     try:
         conn = get_conn()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB connection error: {e}")
-    db_df = assemble_db_df(conn, synth_stats=stats)
+    db_df = assemble_db_df(conn, synth_stats=synth_stats)
     db_df = db_df[~db_df['price'].isnull()]
 
     # concat datasets
@@ -241,10 +247,48 @@ def train_model_endpoint(samples:int=1000, tune:bool=False, n_iter:int=20, use_l
     df['floor_ratio'] = df['floor'] / df['floors_total']
     features += ['price_per_sqm','floor_ratio']
 
+    # ===== KEY FEATURES: area, center_distance, metro_distance =====
+    # Convert metro distance to km for consistency
+    df['metro_distance_km'] = df['metro_distance_min'] / 1000.0
+
+    # Add polynomial and interaction features for center distance
+    df['center_dist_sq'] = df['center_distance_km'] ** 2
+    df['center_dist_log'] = np.log1p(df['center_distance_km'])
+    df['center_dist_inv'] = 1.0 / (1.0 + df['center_distance_km'])  # closer = higher value
+    features += ['center_dist_sq', 'center_dist_log', 'center_dist_inv']
+
+    # Add polynomial features for metro distance
+    df['metro_dist_sq'] = df['metro_distance_km'] ** 2
+    df['metro_dist_log'] = np.log1p(df['metro_distance_km'])
+    df['metro_dist_inv'] = 1.0 / (1.0 + df['metro_distance_km'])  # closer = higher value
+    features += ['metro_dist_sq', 'metro_dist_log', 'metro_dist_inv']
+
+    # ===== KEY INTERACTIONS: boost importance of area + location =====
+    # Area inversely affects distance value (larger area farther from center is still premium)
+    df['area_x_center_inv'] = df['area'] * df['center_dist_inv']  # area * proximity_to_center
+    df['area_x_metro_inv'] = df['area'] * df['metro_dist_inv']    # area * proximity_to_metro
+    df['center_metro_proximity'] = df['center_dist_inv'] * df['metro_dist_inv']  # both locations matter
+    features += ['area_x_center_inv', 'area_x_metro_inv', 'center_metro_proximity']
+
+    # Stronger power features for area (area is critical)
+    df['area_sqrt'] = np.sqrt(df['area'])
+    df['area_cubed_norm'] = (df['area'] / df['area'].max()) ** 3  # normalized to 0-1 range
+    features += ['area_sqrt', 'area_cubed_norm']
+
+    # Composite location score (closer to both center AND metro = premium)
+    df['location_score'] = (df['center_dist_inv'] + df['metro_dist_inv']) / 2.0
+    df['location_score_sq'] = df['location_score'] ** 2
+    features += ['location_score', 'location_score_sq']
+
     # ensure optional text/keyword columns
     for col in ['text','title_len','desc_len','has_word_remont','has_word_mebel','has_word_novostroi']:
         if col not in df.columns:
             df[col] = '' if col == 'text' else 0
+    
+    # Fill NaN values in text columns
+    df['text'] = df['text'].fillna('')
+    df['title_len'] = df['title_len'].fillna(0)
+    df['desc_len'] = df['desc_len'].fillna(0)
 
     # smoothed district encoding
     global_mean = df['price'].mean()
@@ -253,24 +297,39 @@ def train_model_endpoint(samples:int=1000, tune:bool=False, n_iter:int=20, use_l
     smooth_m = 5
     df['district_te'] = (district_counts * district_means + smooth_m * global_mean) / (district_counts + smooth_m)
 
-    X = df[features + ['text','title_len','desc_len','has_word_remont','has_word_mebel','has_word_novostroi','district_te']].copy()
+    # Ensure all required columns exist before creating X
+    all_cols_needed = features + ['text','title_len','desc_len','has_word_remont','has_word_mebel','has_word_novostroi','district_te']
+    missing_cols = [c for c in all_cols_needed if c not in df.columns]
+    if missing_cols:
+        print(f"[WARN] Missing columns: {missing_cols}")
+        # Add missing columns with default values
+        for col in missing_cols:
+            if col in ['text','title_len','desc_len']:
+                df[col] = '' if col == 'text' else 0
+            elif col in ['has_word_remont','has_word_mebel','has_word_novostroi']:
+                df[col] = 0
+            else:
+                df[col] = 0  # default numeric
+
+    X = df[all_cols_needed].copy()
+
     y = df['price'].copy()
 
     if use_log:
         y = np.log1p(y)
 
     # preprocessing
-    numeric_features = ['area','rooms','floor','floors_total','metro_distance_min','latitude','longitude','center_distance_km','build_year','amenities_count','is_summer','is_winter','avg_rating','reviews_count','bookings_last_year','avg_booking_length','bookings_last_30','views_count','median_price_district','days_since_created','price_per_sqm','floor_ratio','title_len','desc_len','has_word_remont','has_word_mebel','has_word_novostroi','district_te']
+    numeric_features = ['area','rooms','floor','floors_total','metro_distance_min','latitude','longitude','center_distance_km','center_dist_sq','center_dist_log','center_dist_inv','metro_dist_sq','metro_dist_log','metro_dist_inv','area_x_center_inv','area_x_metro_inv','center_metro_proximity','area_sqrt','area_cubed_norm','location_score','location_score_sq','build_year','amenities_count','is_summer','is_winter','avg_rating','reviews_count','bookings_last_year','avg_booking_length','bookings_last_30','views_count','median_price_district','days_since_created','price_per_sqm','floor_ratio','title_len','desc_len','has_word_remont','has_word_mebel','has_word_novostroi','district_te']
     numeric_transform = Pipeline(steps=[('imputer', SimpleImputer(strategy='median')), ('scaler', StandardScaler())])
     cat_features = ['district','renovation_quality','furniture','month']
     cat_transform = Pipeline(steps=[('imputer', SimpleImputer(strategy='constant', fill_value='')), ('ohe', OneHotEncoder(handle_unknown='ignore'))])
-    tfidf = TfidfVectorizer(max_features=300, ngram_range=(1,2), stop_words='russian')
+    tfidf = TfidfVectorizer(max_features=300, ngram_range=(1,2), stop_words=None)
     preproc = ColumnTransformer(transformers=[('num', numeric_transform, numeric_features), ('cat', cat_transform, cat_features), ('tfidf', tfidf, 'text')])
 
     def build_pipe(model):
         return Pipeline(steps=[('pre', preproc), ('model', model)])
 
-    base_model = CatBoostRegressor(iterations=500, learning_rate=0.05, depth=6, random_seed=random_state, verbose=0)
+    base_model = GradientBoostingRegressor(n_estimators=500, learning_rate=0.05, max_depth=6, random_state=random_state, verbose=0)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
 
@@ -281,24 +340,24 @@ def train_model_endpoint(samples:int=1000, tune:bool=False, n_iter:int=20, use_l
         # RandomizedSearchCV tuning (keep it short and stable)
         param_distributions = {
             'model__learning_rate': stats.uniform(0.01, 0.15),
-            'model__depth': [4,5,6,7,8],
-            'model__l2_leaf_reg': stats.randint(1,10),
+            'model__max_depth': [4,5,6,7,8],
+            'model__min_samples_split': stats.randint(2,20),
             'model__subsample': stats.uniform(0.6,0.4),
-            'model__rsm': stats.uniform(0.6,0.4),
-            'model__iterations': stats.randint(200,800)
+            'model__n_estimators': stats.randint(200,800)
         }
         rs = RandomizedSearchCV(build_pipe(base_model), param_distributions=param_distributions, n_iter=max(3, min(n_iter, 40)), cv=3, scoring='neg_mean_absolute_error', random_state=random_state, n_jobs=1, verbose=1)
+        print("\n[INFO] Starting RandomizedSearchCV tuning...")
         rs.fit(X_train, y_train)
+        print(f"[INFO] Best params: {rs.best_params_}")
         pipe = rs.best_estimator_
         best_params = rs.best_params_
         cv_mae = -float(rs.best_score_)
     else:
-        try:
-            pipe = build_pipe(base_model)
-            scores = cross_val_score(pipe, X_train, y_train, cv=3, scoring='neg_mean_absolute_error', n_jobs=1)
-            cv_mae = -float(np.mean(scores))
-        except Exception:
-            cv_mae = None
+        print("\n[INFO] Training without tuning...")
+        pipe = build_pipe(base_model)
+        scores = cross_val_score(pipe, X_train, y_train, cv=3, scoring='neg_mean_absolute_error', n_jobs=1)
+        cv_mae = -float(np.mean(scores))
+        print(f"[INFO] CV MAE: {cv_mae:.2f}")
         pipe.fit(X_train, y_train)
 
     y_pred = pipe.predict(X_test)
@@ -373,7 +432,17 @@ def load_pipeline():
         return None
 
 
-@app.get('/predict')
+def load_training_info():
+    """Load training metadata to check if model uses log transform."""
+    try:
+        info_path = os.path.join(os.path.dirname(__file__), 'train_info.json')
+        with open(info_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {'use_log': False}
+
+
+
 def predict_get(listing_id: int = None):
     pipe = load_pipeline()
     if pipe is None:
@@ -473,29 +542,158 @@ async def predict_post(req: Request):
     price = data.get('price')
     district = data.get('district', "") or ""
     housing_type = data.get('housing_type', "") or ""
+    listing_id = data.get('listing_id')  # optional: if editing existing listing
+    
     if price is None:
         raise HTTPException(status_code=400, detail="price is required")
+    
     # Prefer the trained pipeline when available for more realistic seasonal estimates
     pipe = load_pipeline()
     if pipe is None:
         return predict_from_features(price, district, housing_type)
+    
     try:
         synth = load_synthetic(or_generate=False)
-        stats = compute_synth_stats(synth)
+        synth_stats = compute_synth_stats(synth)
+        
+        # If editing existing listing, load its current data from DB as base
+        db_data = {}
+        if listing_id:
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT rooms, housing_type, district, title, description FROM listings WHERE id = %s", (listing_id,))
+                row = cur.fetchone()
+                if row:
+                    db_data = {
+                        'rooms': row[0],
+                        'housing_type': row[1],
+                        'district': row[2],
+                        'title': row[3],
+                        'description': row[4]
+                    }
+                conn.close()
+            except Exception as e:
+                print(f"[WARN] Could not load listing {listing_id}: {e}")
+        
         base = {}
-        base['area'] = float(data.get('area', stats['area_median']))
-        base['rooms'] = int(data.get('rooms', stats['rooms_mode']))
-        base['floor'] = int(data.get('floor', np.clip(np.random.randint(1, max(2, int(stats['floors_total_mean'])+1)),1,50)))
-        base['floors_total'] = int(data.get('floors_total', max(2, int(stats['floors_total_mean']))))
-        base['district'] = district
-        base['metro_distance_min'] = float(data.get('metro_distance_min', stats['metro_distance_mean']))
+        # Merge: prefer data from request, fall back to DB data, then synth stats
+        base['area'] = float(data.get('area', db_data.get('area', synth_stats['area_median'])))
+        base['rooms'] = int(data.get('rooms', db_data.get('rooms', synth_stats['rooms_mode'])))
+        base['floor'] = int(data.get('floor', np.clip(np.random.randint(1, max(2, int(synth_stats['floors_total_mean'])+1)),1,50)))
+        base['floors_total'] = int(data.get('floors_total', max(2, int(synth_stats['floors_total_mean']))))
+        base['district'] = data.get('district', db_data.get('district', ""))
+        base['metro_distance_min'] = float(data.get('metro_distance_min', synth_stats['metro_distance_mean']))
         base['renovation_quality'] = data.get('renovation_quality', 'косметический')
         base['furniture'] = data.get('furniture', 'частично')
-        base['latitude'] = float(data.get('latitude', stats['latitude_mean']))
-        base['longitude'] = float(data.get('longitude', stats['longitude_mean']))
-        base['center_distance_km'] = float(data.get('center_distance_km', stats['center_distance_mean']))
-        base['build_year'] = int(data.get('build_year', stats['build_year_median']))
-        base['amenities_count'] = int(data.get('amenities_count', stats['amenities_count_mean']))
+        base['latitude'] = float(data.get('latitude', synth_stats['latitude_mean']))
+        base['longitude'] = float(data.get('longitude', synth_stats['longitude_mean']))
+        base['center_distance_km'] = float(data.get('center_distance_km', synth_stats['center_distance_mean']))
+        base['build_year'] = int(data.get('build_year', synth_stats['build_year_median']))
+        base['amenities_count'] = int(data.get('amenities_count', synth_stats['amenities_count_mean']))
+        
+        # For DB-derived features (rating, reviews, bookings): if editing, load from DB
+        if listing_id:
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                # reviews
+                cur.execute("SELECT AVG(rating), COUNT(*) FROM reviews WHERE listing_id = %s", (listing_id,))
+                rev = cur.fetchone()
+                base['avg_rating'] = float(rev[0]) if rev[0] else 4.5
+                base['reviews_count'] = int(rev[1]) if rev[1] else 0
+                # bookings last year
+                cur.execute("SELECT COUNT(*), AVG(EXTRACT(DAY FROM (end_date - start_date))) FROM bookings WHERE listing_id = %s AND status = 'approved' AND start_date >= (current_date - interval '365 days')", (listing_id,))
+                bk = cur.fetchone()
+                base['bookings_last_year'] = int(bk[0]) if bk[0] else 0
+                base['avg_booking_length'] = int(bk[1]) if bk[1] else 10
+                # bookings last 30 days
+                cur.execute("SELECT COUNT(*) FROM bookings WHERE listing_id = %s AND status = 'approved' AND start_date >= (current_date - interval '30 days')", (listing_id,))
+                bk30 = cur.fetchone()
+                base['bookings_last_30'] = int(bk30[0]) if bk30[0] else 0
+                # views
+                cur.execute("SELECT COUNT(*) FROM listing_views WHERE listing_id = %s", (listing_id,))
+                views = cur.fetchone()
+                base['views_count'] = int(views[0]) if views[0] else 0
+                # created_at
+                cur.execute("SELECT created_at FROM listings WHERE id = %s", (listing_id,))
+                created = cur.fetchone()
+                if created and created[0]:
+                    days_since = (datetime.utcnow().date() - created[0]).days if hasattr(created[0], 'date') else 0
+                    base['days_since_created'] = max(1, int(days_since))
+                else:
+                    base['days_since_created'] = 1
+                conn.close()
+            except Exception as e:
+                print(f"[WARN] Could not load DB features for listing {listing_id}: {e}")
+                # use defaults
+                base['avg_rating'] = float(data.get('avg_rating', synth_stats.get('avg_rating_median', 4.5)))
+                base['reviews_count'] = int(data.get('reviews_count', synth_stats.get('reviews_count_median', 0)))
+                base['bookings_last_year'] = int(data.get('bookings_last_year', synth_stats.get('bookings_last_year_median', 5)))
+                base['avg_booking_length'] = float(data.get('avg_booking_length', synth_stats.get('avg_booking_length_median', 10)))
+                base['bookings_last_30'] = int(data.get('bookings_last_30', synth_stats.get('bookings_last_30_median', 1)))
+                base['views_count'] = int(data.get('views_count', synth_stats.get('views_count_median', 30)))
+                base['days_since_created'] = int(data.get('days_since_created', 1))
+        else:
+            # new listing: use defaults
+            base['avg_rating'] = float(data.get('avg_rating', synth_stats.get('avg_rating_median', 4.5)))
+            base['reviews_count'] = int(data.get('reviews_count', synth_stats.get('reviews_count_median', 0)))
+            base['bookings_last_year'] = int(data.get('bookings_last_year', synth_stats.get('bookings_last_year_median', 5)))
+            base['avg_booking_length'] = float(data.get('avg_booking_length', synth_stats.get('avg_booking_length_median', 10)))
+            base['bookings_last_30'] = int(data.get('bookings_last_30', synth_stats.get('bookings_last_30_median', 1)))
+            base['views_count'] = int(data.get('views_count', synth_stats.get('views_count_median', 30)))
+            base['days_since_created'] = int(data.get('days_since_created', 1))
+        
+        base['median_price_district'] = float(data.get('median_price_district', synth_stats.get('median_price_district_median', price)))
+        base['price_per_sqm'] = float(price) / base['area'] if base['area'] > 0 else float(price)
+        base['floor_ratio'] = float(base['floor']) / base['floors_total'] if base['floors_total'] > 0 else 0.5
+        
+        # Text features based on description
+        title = data.get('title', '')
+        desc = data.get('description', '')
+        base['title_len'] = len(title)
+        base['desc_len'] = len(desc)
+        base['has_word_remont'] = 1 if 'ремонт' in desc.lower() else 0
+        base['has_word_mebel'] = 1 if 'мебель' in desc.lower() or 'меблированн' in desc.lower() else 0
+        base['has_word_novostroi'] = 1 if 'новостройка' in desc.lower() or 'новое' in desc.lower() else 0
+        
+        # ===== KEY FEATURES ENGINEERING =====
+        # Convert metro distance to km for consistency
+        base['metro_distance_km'] = base['metro_distance_min'] / 1000.0
+        
+        # Polynomial features for center distance
+        base['center_dist_sq'] = base['center_distance_km'] ** 2
+        base['center_dist_log'] = np.log1p(base['center_distance_km'])
+        base['center_dist_inv'] = 1.0 / (1.0 + base['center_distance_km'])
+        
+        # Polynomial features for metro distance
+        base['metro_dist_sq'] = base['metro_distance_km'] ** 2
+        base['metro_dist_log'] = np.log1p(base['metro_distance_km'])
+        base['metro_dist_inv'] = 1.0 / (1.0 + base['metro_distance_km'])
+        
+        # KEY INTERACTIONS: boost area + location importance
+        base['area_x_center_inv'] = base['area'] * base['center_dist_inv']
+        base['area_x_metro_inv'] = base['area'] * base['metro_dist_inv']
+        base['center_metro_proximity'] = base['center_dist_inv'] * base['metro_dist_inv']
+        
+        # Stronger power features for area
+        base['area_sqrt'] = np.sqrt(base['area'])
+        base['area_cubed_norm'] = ((base['area'] / 100.0) ** 3) / 1000.0  # normalized power
+        
+        # Composite location score (closer to both center AND metro = premium)
+        base['location_score'] = (base['center_dist_inv'] + base['metro_dist_inv']) / 2.0
+        base['location_score_sq'] = base['location_score'] ** 2
+        
+        # Target encoding for district (simplified: use median price as proxy)
+        base['district_te'] = base['median_price_district']
+        
+        # Add 'text' field for TF-IDF (combines title and description)
+        base['text'] = (title + ' ' + desc).lower()
+        
+        # Load training info to check if model uses log transform
+        train_info = load_training_info()
+        use_log = train_info.get('use_log', False)
+        
         # predict per season representative months
         rep_month = {'winter':1,'spring':4,'summer':7,'autumn':10}
         seasons = {}
@@ -506,12 +704,18 @@ async def predict_post(req: Request):
             feat['is_winter'] = 1 if m in [12,1,2] else 0
             Xpred = pd.DataFrame([feat])
             pred = pipe.predict(Xpred)[0]
+            # Apply inverse log transform if model was trained with log
+            if use_log:
+                pred = np.expm1(pred)
             seasons[s] = int(round(float(pred)))
         current = month_to_season(datetime.utcnow().month)
         recommended = seasons.get(current, int(round(np.median(list(seasons.values())))))
         return {'base_price': int(round(float(price))), 'seasons':seasons, 'recommended':recommended}
-    except Exception:
+    except Exception as e:
         # fallback to simple multiplier-based predictor
+        print(f"[ERROR] Predict failed: {e}")
+        import traceback
+        traceback.print_exc()
         return predict_from_features(price, district, housing_type)
 
 

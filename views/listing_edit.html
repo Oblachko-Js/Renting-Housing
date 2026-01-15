@@ -201,6 +201,7 @@
                 btn.innerText = 'Оценка...';
 
                 const payload = {
+                  listing_id: <%= listing.id %>,
                   price: Number(priceEl.value || 0),
                   district: districtEl && districtEl.value || '',
                   housing_type: housingEl && housingEl.value || '',
@@ -208,7 +209,9 @@
                   address: addrEl && addrEl.value || '',
                   title: titleEl && titleEl.value || '',
                   description: descEl && descEl.value || '',
-                  amenities: amenitiesEls.filter(c=>c.checked).map(c=>c.value)
+                  amenities: amenitiesEls.filter(c=>c.checked).map(c=>c.value),
+                  center_distance_km: 10,  // TODO: compute from coordinates if available
+                  metro_distance_min: 300  // TODO: compute from coordinates if available
                 };
 
                 const resp = await fetch('/api/recommend_price', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
