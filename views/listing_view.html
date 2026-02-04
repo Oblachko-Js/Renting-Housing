@@ -96,27 +96,137 @@
         <button id="toggle-seasonal" type="button" class="btn" aria-expanded="false" style="margin-bottom:8px;">Показать ориентировочные цены</button>
         <div id="seasonal-prices" style="display:none;padding:10px;background:#f7f7ff;border-radius:8px;">
           <strong>Ориентировочные цены по сезонам:</strong>
-          <ul style="margin:8px 0 0;padding-left:18px;">
+          <ul id="seasonal-list" style="margin:8px 0 0;padding-left:18px;">
             <% const seasonMap = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' }; %>
             <% for (const s in seasonal_prices.seasons) { %>
-              <li><strong><%= seasonMap[s] || (s.charAt(0).toUpperCase() + s.slice(1)) %>:</strong> <%= seasonal_prices.seasons[s] %> руб./мес.</li>
+              <li data-season="<%= s %>"><strong><%= seasonMap[s] || (s.charAt(0).toUpperCase() + s.slice(1)) %>:</strong> <%= seasonal_prices.seasons[s] %> руб./мес.</li>
             <% } %>
           </ul>
           <% if (seasonal_prices.recommended) { %>
             <div id="seasonal-recommended" style="margin-top:8px;color:#2e7d32;">Рекомендованная цена сейчас: <strong><%= seasonal_prices.recommended %> руб./мес.</strong></div>
           <% } %>
+
+          <div id="season-chart-container" style="display:flex;gap:12px;align-items:flex-start;margin-top:12px;flex-wrap:wrap;">
+            <div style="flex:1 1 320px; max-width:520px;">
+              <canvas id="seasonChart" width="520" height="240" aria-label="График ориентировочных цен по сезонам"></canvas>
+            </div>
+            <div id="seasonChartSummary" style="flex:0 0 160px; font-size:0.95em;color:#333;"></div>
+          </div>
+          <div id="season-donut-row" style="margin-top:10px; display:flex; gap:12px; align-items:center;">
+            <div style="flex:0 0 220px; background:#fff; padding:10px; border-radius:8px; border:1px solid #eef6ff;">
+              <canvas id="seasonDonut" width="200" height="200" aria-label="Дольовой график сезонов"></canvas>
+            </div>
+            <div id="seasonDonutSummary" style="font-size:0.95em;color:#333;">
+              <div style="font-weight:600;margin-bottom:6px;">Доля сезонов</div>
+              <div id="seasonDonutText">—</div>
+            </div>
+          </div>
         </div>
       </div>
       <script>
         document.addEventListener('DOMContentLoaded', function(){
           const btn = document.getElementById('toggle-seasonal');
           const box = document.getElementById('seasonal-prices');
+          let chartRendered = false;
+          const seasonsData = <%- JSON.stringify(seasonal_prices.seasons) %>;
+          const recommended = <%= seasonal_prices.recommended ? seasonal_prices.recommended : 'null' %>;
+          const basePrice = <%= seasonal_prices.base_price ? seasonal_prices.base_price : (listing.price || 0) %>;
+
+          function renderSeasonChart(){
+            if (chartRendered) return;
+            chartRendered = true;
+            try {
+              const labels = Object.keys(seasonsData).map(s => {
+                const map = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' };
+                return map[s] || s;
+              });
+              const values = Object.keys(seasonsData).map(s => seasonsData[s]);
+              const ctx = document.getElementById('seasonChart').getContext('2d');
+              if (window._seasonChart) { window._seasonChart.destroy(); }
+              window._seasonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                  labels: labels,
+                  datasets: [{
+                    label: 'Цена, руб./мес.',
+                    data: values,
+                    backgroundColor: ['#4fc3f7','#81d4fa','#4db6ac','#64b5f6'],
+                    borderColor: ['#039be5','#29b6f6','#00897b','#1976d2'],
+                    borderWidth: 1
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  scales: { y: { beginAtZero: true } },
+                  plugins: { legend: { display: false } }
+                }
+              });
+
+              const summary = document.getElementById('seasonChartSummary');
+              const avg = Math.round(values.reduce((a,b)=>a+b,0)/values.length);
+              summary.innerHTML = '<div style="font-weight:600;margin-bottom:8px;">Краткая статистика</div>' +
+                '<div>Средняя сезонная: <b>' + avg + ' руб.</b></div>' +
+                (recommended ? ('<div style="margin-top:8px;color:#2e7d32;">Рекомендовано сейчас: <b>' + recommended + ' руб.</b></div>') : '');
+              // render donut / pie showing share of seasons
+              try {
+                const dctx = document.getElementById('seasonDonut').getContext('2d');
+                if (window._seasonDonut) { window._seasonDonut.destroy(); }
+                window._seasonDonut = new Chart(dctx, {
+                  type: 'doughnut',
+                  data: {
+                    labels: labels,
+                    datasets: [{ data: values, backgroundColor: ['#4fc3f7','#81d4fa','#4db6ac','#64b5f6'] }]
+                  },
+                  options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}} }
+                });
+                const total = values.reduce((a,b)=>a+b,0) || 1;
+                const parts = labels.map((l,i)=> `${l}: ${Math.round(values[i]/total*100)}%`);
+                // detailed analytics
+                const minVal = Math.min(...values);
+                const maxVal = Math.max(...values);
+                const minIdx = values.indexOf(minVal);
+                const maxIdx = values.indexOf(maxVal);
+                const minSeason = labels[minIdx];
+                const maxSeason = labels[maxIdx];
+                const rangePct = minVal>0 ? Math.round((maxVal - minVal)/minVal * 100) : 0;
+                const mean = total / values.length;
+                const variance = values.reduce((a,b)=>a + Math.pow(b-mean,2),0)/values.length;
+                const std = Math.sqrt(variance);
+                const volatilityPct = Math.round((std/mean)*100);
+                const summerIdx = labels.findIndex(l=>/лето|Summer|Лето/i.test(l)) ;
+                const winterIdx = labels.findIndex(l=>/зима|winter|Зима/i.test(l)) ;
+                const summerVal = summerIdx>=0 ? values[summerIdx] : null;
+                const winterVal = winterIdx>=0 ? values[winterIdx] : null;
+                const summerVsWinterPct = (summerVal && winterVal) ? Math.round((summerVal - winterVal)/Math.max(1,winterVal)*100) : null;
+                const recVsBasePct = (basePrice && recommended) ? Math.round((recommended - basePrice)/Math.max(1,basePrice)*100) : null;
+                let html = '';
+                html += '<div style="font-weight:600;margin-bottom:6px;">Аналитика по сезонам</div>';
+                html += '<div><b>Максимальная:</b> ' + maxSeason + ' — <b>' + maxVal + ' руб.</b></div>';
+                html += '<div><b>Минимальная:</b> ' + minSeason + ' — <b>' + minVal + ' руб.</b></div>';
+                html += '<div><b>Разница макс/мин:</b> ' + rangePct + '%</div>';
+                html += '<div><b>Средняя цена:</b> ' + Math.round(mean) + ' руб.</div>';
+                html += '<div><b>Волатильность (std/mean):</b> ' + volatilityPct + '%</div>';
+                if (summerVsWinterPct !== null) html += '<div><b>Лето vs Зима:</b> ' + summerVsWinterPct + '%</div>';
+                if (recVsBasePct !== null) html += '<div style="margin-top:6px;color:#2e7d32;"><b>Рекомендовано vs Базовая:</b> ' + (recVsBasePct>0?'+':'') + recVsBasePct + '%</div>';
+                html += '<div style="margin-top:8px;color:#666;font-size:0.95em;">Доли по сезонам:<br>' + parts.join('<br>') + '</div>';
+                document.getElementById('seasonDonutText').innerHTML = html;
+              } catch (err) { console.error('Donut render error', err); }
+            } catch (err) {
+              console.error('Chart render error', err);
+            }
+          }
+
           if (!btn || !box) return;
           btn.addEventListener('click', function(){
             const isHidden = box.style.display === 'none' || box.style.display === '';
             box.style.display = isHidden ? 'block' : 'none';
             btn.innerText = isHidden ? 'Свернуть ориентировочные цены' : 'Показать ориентировочные цены';
             btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+            if (isHidden) {
+              // render chart after visible so canvas sizing works
+              setTimeout(renderSeasonChart, 50);
+            }
           });
         });
       </script>
@@ -388,6 +498,7 @@
     <% } %>
   </script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/js/main.js"></script>
   <script>
   function toggleMenu(e) {

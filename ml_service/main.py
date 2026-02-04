@@ -4,7 +4,7 @@ import psycopg2
 import json
 from collections import defaultdict
 from dateutil import parser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import math
 import pandas as pd
 import numpy as np
@@ -524,12 +524,157 @@ def predict_get(listing_id: int = None):
         raise HTTPException(status_code=400, detail="Provide listing_id or POST body with features")
     try:
         conn = get_conn(); cur = conn.cursor()
-        cur.execute("SELECT id, price, district, housing_type FROM listings WHERE id = %s", (listing_id,))
+        cur.execute("SELECT price, district, housing_type, title, description FROM listings WHERE id = %s", (listing_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Listing not found")
-        _, price, district, housing_type = row
-        return predict_from_features(price, district or "", housing_type or "")
+        price, district, housing_type, title, description = row
+        
+        # Load model
+        pipe = load_pipeline()
+        if pipe is None:
+            return predict_from_features(price or 50000, district or "", housing_type or "")
+        
+        # Use full prediction pipeline with DB data
+        synth = load_synthetic(or_generate=False)
+        synth_stats = compute_synth_stats(synth)
+        
+        # Simulate POST request data structure
+        data = {
+            'price': price or 50000,
+            'district': district or '',
+            'housing_type': housing_type or '',
+            'title': title or '',
+            'description': description or '',
+            'listing_id': listing_id
+        }
+        
+        try:
+            base = {}
+            # Load DB data for this listing
+            cur.execute("SELECT rooms, lat, lng, amenities, address FROM listings WHERE id = %s", (listing_id,))
+            listing_row = cur.fetchone()
+            if listing_row:
+                rooms, lat, lng, amenities, address = listing_row
+                base['rooms'] = int(rooms) if rooms else int(synth_stats['rooms_mode'])
+                base['latitude'] = float(lat) if lat else float(synth_stats['latitude_mean'])
+                base['longitude'] = float(lng) if lng else float(synth_stats['longitude_mean'])
+                base['amenities_count'] = len([x.strip() for x in (amenities or '').split(',') if x.strip()]) if amenities else int(synth_stats['amenities_count_mean'])
+            else:
+                base['rooms'] = int(synth_stats['rooms_mode'])
+                base['latitude'] = float(synth_stats['latitude_mean'])
+                base['longitude'] = float(synth_stats['longitude_mean'])
+                base['amenities_count'] = int(synth_stats['amenities_count_mean'])
+            
+            base['area'] = float(data.get('area', synth_stats['area_median']))
+            base['floor'] = int(np.clip(np.random.randint(1, max(2, int(synth_stats['floors_total_mean'])+1)),1,50))
+            base['floors_total'] = int(max(2, int(synth_stats['floors_total_mean'])))
+            base['district'] = data.get('district', "")
+            base['metro_distance_min'] = int(synth_stats.get('metro_distance_median', 300))
+            base['renovation_quality'] = 'косметический'
+            base['furniture'] = 'частично'
+            base['center_distance_km'] = float(synth_stats['center_distance_mean'])
+            base['build_year'] = int(synth_stats['build_year_median'])
+            
+            # Load DB-derived features from DB
+            cur.execute("SELECT AVG(rating), COUNT(*) FROM reviews WHERE listing_id = %s", (listing_id,))
+            rev = cur.fetchone()
+            base['avg_rating'] = float(rev[0]) if rev[0] else 4.5
+            base['reviews_count'] = int(rev[1]) if rev[1] else 0
+            
+            cur.execute("SELECT COUNT(*), AVG((end_date - start_date)::numeric) FROM bookings WHERE listing_id = %s AND status = 'approved' AND start_date >= (current_date - interval '365 days')", (listing_id,))
+            bk = cur.fetchone()
+            base['bookings_last_year'] = int(bk[0]) if bk[0] else 0
+            base['avg_booking_length'] = int(bk[1]) if bk[1] else 10
+            
+            cur.execute("SELECT COUNT(*) FROM bookings WHERE listing_id = %s AND status = 'approved' AND start_date >= (current_date - interval '30 days')", (listing_id,))
+            bk30 = cur.fetchone()
+            base['bookings_last_30'] = int(bk30[0]) if bk30[0] else 0
+            
+            cur.execute("SELECT COUNT(*) FROM listing_views WHERE listing_id = %s", (listing_id,))
+            views = cur.fetchone()
+            base['views_count'] = int(views[0]) if views[0] else 0
+            
+            cur.execute("SELECT created_at FROM listings WHERE id = %s", (listing_id,))
+            created = cur.fetchone()
+            if created and created[0]:
+                if isinstance(created[0], datetime):
+                    created_date = created[0].date()
+                elif isinstance(created[0], date):
+                    created_date = created[0]
+                else:
+                    created_date = date.today()
+                days_since = (date.today() - created_date).days
+                base['days_since_created'] = max(1, int(days_since))
+            else:
+                base['days_since_created'] = 1
+            
+            conn.close()
+            
+            base['median_price_district'] = float(synth_stats.get('median_price_district_median', price or 50000))
+            base['price_per_sqm'] = float(price or 50000) / base['area'] if base['area'] > 0 else float(price or 50000)
+            base['floor_ratio'] = float(base['floor']) / base['floors_total'] if base['floors_total'] > 0 else 0.5
+            
+            # Text features
+            title = data.get('title', '')
+            desc = data.get('description', '')
+            base['title_len'] = len(title)
+            base['desc_len'] = len(desc)
+            base['has_word_remont'] = 1 if 'ремонт' in desc.lower() else 0
+            base['has_word_mebel'] = 1 if 'мебель' in desc.lower() or 'меблированн' in desc.lower() else 0
+            base['has_word_novostroi'] = 1 if 'новостройка' in desc.lower() or 'новое' in desc.lower() else 0
+            
+            # Key features engineering
+            base['metro_distance_km'] = base['metro_distance_min'] / 1000.0
+            base['center_dist_sq'] = base['center_distance_km'] ** 2
+            base['center_dist_log'] = np.log1p(base['center_distance_km'])
+            base['center_dist_inv'] = 1.0 / (1.0 + base['center_distance_km'])
+            
+            base['metro_dist_sq'] = base['metro_distance_km'] ** 2
+            base['metro_dist_log'] = np.log1p(base['metro_distance_km'])
+            base['metro_dist_inv'] = 1.0 / (1.0 + base['metro_distance_km'])
+            
+            base['area_x_center_inv'] = base['area'] * base['center_dist_inv']
+            base['area_x_metro_inv'] = base['area'] * base['metro_dist_inv']
+            base['center_metro_proximity'] = base['center_dist_inv'] * base['metro_dist_inv']
+            
+            base['area_sqrt'] = np.sqrt(base['area'])
+            base['area_cubed_norm'] = ((base['area'] / 100.0) ** 3) / 1000.0
+            
+            base['location_score'] = (base['center_dist_inv'] + base['metro_dist_inv']) / 2.0
+            base['location_score_sq'] = base['location_score'] ** 2
+            
+            base['district_te'] = base['median_price_district']
+            base['text'] = (title + ' ' + desc).lower()
+            
+            # Load training info
+            train_info = load_training_info()
+            use_log = train_info.get('use_log', False)
+            
+            # Predict per season
+            rep_month = {'winter':1,'spring':4,'summer':7,'autumn':10}
+            seasons = {}
+            for s, m in rep_month.items():
+                feat = base.copy()
+                feat['month'] = m
+                feat['is_summer'] = 1 if m in [6,7,8] else 0
+                feat['is_winter'] = 1 if m in [12,1,2] else 0
+                Xpred = pd.DataFrame([feat])
+                pred = pipe.predict(Xpred)[0]
+                if use_log:
+                    pred = np.expm1(pred)
+                seasons[s] = int(round(float(pred)))
+            
+            current = month_to_season(datetime.utcnow().month)
+            recommended = seasons.get(current, int(round(np.median(list(seasons.values())))))
+            return {'base_price': int(round(float(price or 50000))), 'seasons':seasons, 'recommended':recommended}
+            
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] GET Predict with DB data failed: {e}")
+            print(traceback.format_exc())
+            return predict_from_features(price or 50000, district or "", housing_type or "")
+            
     except HTTPException:
         raise
     except Exception as e:
@@ -619,9 +764,16 @@ async def predict_post(req: Request):
                 cur.execute("SELECT created_at FROM listings WHERE id = %s", (listing_id,))
                 created = cur.fetchone()
                 if created and created[0]:
-                    days_since = (datetime.utcnow().date() - created[0]).days if hasattr(created[0], 'date') else 0
+                    if isinstance(created[0], datetime):
+                        created_date = created[0].date()
+                    elif isinstance(created[0], date):
+                        created_date = created[0]
+                    else:
+                        created_date = date.today()
+                    days_since = (date.today() - created_date).days
                     base['days_since_created'] = max(1, int(days_since))
                 else:
+                    base['days_since_created'] = 1
                     base['days_since_created'] = 1
                 conn.close()
             except Exception as e:
