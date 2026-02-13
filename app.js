@@ -69,7 +69,7 @@ async function ensureListingExtraColumns() {
          ADD COLUMN IF NOT EXISTS amenities TEXT,
          ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
          ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
-         ADD COLUMN IF NOT EXISTS photos TEXT`
+         ADD COLUMN IF NOT EXISTS photos TEXT`,
     );
   } catch (_) {}
   listingsColumnsEnsured = true;
@@ -81,7 +81,7 @@ app.use(
     secret: "mysecret",
     resave: false,
     saveUninitialized: false,
-  })
+  }),
 );
 
 // Middleware для подсчёта непрочитанных сообщений (перемещён выше роутов)
@@ -89,7 +89,7 @@ app.use(async (req, res, next) => {
   if (req.session.userId) {
     const unread = await pool.query(
       `SELECT COUNT(*) FROM messages WHERE receiver_id = $1 AND is_read = false AND text <> ''`,
-      [req.session.userId]
+      [req.session.userId],
     );
     res.locals.unreadCount = parseInt(unread.rows[0].count, 10);
   } else {
@@ -212,7 +212,7 @@ app.get("/api/listings", async (req, res) => {
   if (q) {
     params.push(`%${q}%`);
     where.push(
-      `(l.title ILIKE $${params.length} OR l.address ILIKE $${params.length})`
+      `(l.title ILIKE $${params.length} OR l.address ILIKE $${params.length})`,
     );
   }
   if (min_price) {
@@ -298,7 +298,7 @@ app.get("/", async (req, res) => {
   if (q) {
     params.push(`%${q}%`);
     where.push(
-      `(l.title ILIKE $${params.length} OR l.address ILIKE $${params.length})`
+      `(l.title ILIKE $${params.length} OR l.address ILIKE $${params.length})`,
     );
   }
   if (min_price) {
@@ -404,14 +404,14 @@ app.post("/register", async (req, res) => {
     try {
       await pool.query(
         "INSERT INTO users (username, password_hash, role, display_name) VALUES ($1, $2, $3, $4)",
-        [email, hash, role, display_name || null]
+        [email, hash, role, display_name || null],
       );
     } catch (e) {
       if (e.code === "42703") {
         // display_name колонки нет — вставляем без неё
         await pool.query(
           "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)",
-          [email, hash, role]
+          [email, hash, role],
         );
       } else {
         throw e;
@@ -487,7 +487,7 @@ app.post("/admin/logout", requireAdmin, (req, res) => {
 app.get("/admin/api/tables", requireAdmin, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`
+      `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`,
     );
     res.json(r.rows.map((x) => x.table_name));
   } catch (e) {
@@ -503,7 +503,7 @@ app.get("/admin/api/table/:name", requireAdmin, async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT * FROM ${name} ORDER BY 1 LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      [limit, offset],
     );
     res.json({ rows: r.rows });
   } catch (e) {
@@ -527,15 +527,15 @@ app.post(
     try {
       const r = await pool.query(
         `INSERT INTO ${name} (${cols.join(",")}) VALUES (${placeholders.join(
-          ","
+          ",",
         )}) RETURNING *`,
-        values
+        values,
       );
       res.json({ row: r.rows[0] });
     } catch (e) {
       res.status(400).json({ error: "insert_failed" });
     }
-  }
+  },
 );
 
 // Update row by primary key id
@@ -559,13 +559,13 @@ app.post(
         `UPDATE ${name} SET ${sets.join(", ")} WHERE id = $${
           values.length
         } RETURNING *`,
-        values
+        values,
       );
       res.json({ row: r.rows[0] });
     } catch (e) {
       res.status(400).json({ error: "update_failed" });
     }
-  }
+  },
 );
 
 // Delete row by primary key id
@@ -583,7 +583,7 @@ app.post(
     } catch (e) {
       res.status(400).json({ error: "delete_failed" });
     }
-  }
+  },
 );
 
 // Личный кабинет
@@ -598,7 +598,7 @@ app.get("/profile", async (req, res) => {
   try {
     const r = await pool.query(
       "SELECT username, display_name, role FROM users WHERE id = $1",
-      [req.session.userId]
+      [req.session.userId],
     );
     if (r.rows[0]) {
       email = r.rows[0].username;
@@ -616,7 +616,7 @@ app.get("/profile", async (req, res) => {
   if (user.role === "landlord") {
     const result = await pool.query(
       `SELECT * FROM listings WHERE owner_id = $1 ORDER BY id DESC`,
-      [user.id]
+      [user.id],
     );
     listings = result.rows;
   }
@@ -631,7 +631,7 @@ app.get("/profile", async (req, res) => {
       GROUP BY l.id, l.title, l.price, l.photo, l.address
       ORDER BY viewed_at DESC
       LIMIT 20`,
-    [user.id]
+    [user.id],
   );
   history = h.rows;
   res.render("profile", {
@@ -648,7 +648,7 @@ app.post("/profile/name", async (req, res) => {
   const { display_name } = req.body;
   try {
     await pool.query(
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(100)"
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(100)",
     );
   } catch (_) {}
   await pool.query("UPDATE users SET display_name = $1 WHERE id = $2", [
@@ -752,7 +752,7 @@ app.post("/listings/new", uploadMultiple, async (req, res) => {
       amenities,
       latNum,
       lngNum,
-    ]
+    ],
   );
   res.redirect("/");
 });
@@ -764,7 +764,7 @@ app.get("/listings/:id", async (req, res) => {
   const result = await pool.query(
     `SELECT l.*, COALESCE(u.display_name, u.username) AS owner_name
      FROM listings l JOIN users u ON l.owner_id = u.id WHERE l.id = $1`,
-    [id]
+    [id],
   );
   if (result.rows.length === 0) return res.send("Объявление не найдено");
   const listing = result.rows[0];
@@ -779,7 +779,7 @@ app.get("/listings/:id", async (req, res) => {
           req.session.userId || null,
           req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || null,
           req.headers["user-agent"] || null,
-        ]
+        ],
       );
     }
   } catch (_) {}
@@ -794,17 +794,17 @@ app.get("/listings/:id", async (req, res) => {
   const reviews = await pool.query(
     `SELECT r.*, COALESCE(u.display_name, u.username) AS author_name
      FROM reviews r JOIN users u ON r.user_id = u.id WHERE r.listing_id = $1 ORDER BY r.created_at DESC`,
-    [id]
+    [id],
   );
   const avg = await pool.query(
     `SELECT AVG(rating)::numeric(3,2) as avg_rating FROM reviews WHERE listing_id = $1`,
-    [id]
+    [id],
   );
   let isFavorite = false;
   if (user) {
     const fav = await pool.query(
       "SELECT 1 FROM favorites WHERE user_id = $1 AND listing_id = $2",
-      [user.id, id]
+      [user.id, id],
     );
     isFavorite = fav.rows.length > 0;
   }
@@ -813,7 +813,7 @@ app.get("/listings/:id", async (req, res) => {
   let seasonalPrices = null;
   try {
     seasonalPrices = await callPriceService(
-      `/predict?listing_id=${listing.id}`
+      `/predict?listing_id=${listing.id}`,
     );
   } catch (_) {
     seasonalPrices = null;
@@ -883,8 +883,8 @@ app.post("/listings/:id/edit", uploadFields, async (req, res) => {
     currentPhotos = listing.photos
       ? JSON.parse(listing.photos)
       : listing.photo
-      ? [listing.photo]
-      : [];
+        ? [listing.photo]
+        : [];
   } catch (_) {
     currentPhotos = listing.photo ? [listing.photo] : [];
   }
@@ -982,7 +982,7 @@ app.post("/listings/:id/edit", uploadFields, async (req, res) => {
       latNum,
       lngNum,
       id,
-    ]
+    ],
   );
   res.redirect(`/listings/${id}`);
 });
@@ -1050,7 +1050,7 @@ app.get("/listings/:id/messages", async (req, res) => {
   const id = req.params.id;
   const messages = await pool.query(
     `SELECT m.*, u.username FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.listing_id = $1 ORDER BY m.timestamp ASC`,
-    [id]
+    [id],
   );
   res.json(messages.rows.map((m) => ({ username: m.username, text: m.text })));
 });
@@ -1060,7 +1060,7 @@ app.get("/listings/:id/approved", async (req, res) => {
   const id = req.params.id;
   const rows = await pool.query(
     `SELECT start_date, end_date FROM bookings WHERE listing_id = $1 AND status = 'approved' ORDER BY start_date ASC`,
-    [id]
+    [id],
   );
   res.json(rows.rows);
 });
@@ -1070,7 +1070,7 @@ app.get("/listings/:id/pending", async (req, res) => {
   const id = req.params.id;
   const rows = await pool.query(
     `SELECT start_date, end_date FROM bookings WHERE listing_id = $1 AND status = 'pending' ORDER BY start_date ASC`,
-    [id]
+    [id],
   );
   res.json(rows.rows);
 });
@@ -1085,28 +1085,28 @@ app.get("/chats", async (req, res) => {
      WHERE sender_id = $1 OR receiver_id = $1
      GROUP BY listing_id, CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END
      ORDER BY chat_id DESC`,
-    [req.session.userId]
+    [req.session.userId],
   );
   const chatList = [];
   for (const chat of chats.rows) {
     const otherUser = await pool.query(
       "SELECT COALESCE(display_name, username) AS name FROM users WHERE id = $1",
-      [chat.other_id]
+      [chat.other_id],
     );
     const listing = await pool.query(
       "SELECT title FROM listings WHERE id = $1",
-      [chat.listing_id]
+      [chat.listing_id],
     );
     const unread = await pool.query(
       `SELECT COUNT(*) FROM messages WHERE receiver_id = $1 AND sender_id = $2 AND listing_id = $3 AND is_read = false AND text <> ''`,
-      [req.session.userId, chat.other_id, chat.listing_id]
+      [req.session.userId, chat.other_id, chat.listing_id],
     );
     // last message preview
     const last = await pool.query(
       `SELECT text, timestamp, sender_id FROM messages
        WHERE listing_id = $1 AND ((sender_id = $2 AND receiver_id = $3) OR (sender_id = $3 AND receiver_id = $2))
        ORDER BY timestamp DESC LIMIT 1`,
-      [chat.listing_id, req.session.userId, chat.other_id]
+      [chat.listing_id, req.session.userId, chat.other_id],
     );
     if (otherUser.rows.length && listing.rows.length) {
       chatList.push({
@@ -1139,7 +1139,7 @@ app.post("/chats/start", async (req, res) => {
      FROM messages
      WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
        AND listing_id = $3`,
-    [req.session.userId, receiver_id, listing_id]
+    [req.session.userId, receiver_id, listing_id],
   );
   const chatIdExisting = existing.rows[0] && existing.rows[0].chat_id;
   if (chatIdExisting) {
@@ -1149,7 +1149,7 @@ app.post("/chats/start", async (req, res) => {
     if (!text || !text.trim()) text = "Здравствуйте!";
     const result = await pool.query(
       `INSERT INTO messages (sender_id, receiver_id, listing_id, text) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [req.session.userId, receiver_id, listing_id, text]
+      [req.session.userId, receiver_id, listing_id, text],
     );
     const newId = result.rows[0].id;
     notifyUser(io, receiver_id, { title: "Новое сообщение", body: text });
@@ -1169,7 +1169,7 @@ app.get("/chats/:id", async (req, res) => {
   const { listing_id, sender_id, receiver_id } = firstMsg.rows[0];
   const root = await pool.query(
     `SELECT MIN(id) AS chat_id FROM messages WHERE listing_id = $1 AND ((sender_id = $2 AND receiver_id = $3) OR (sender_id = $3 AND receiver_id = $2))`,
-    [listing_id, sender_id, receiver_id]
+    [listing_id, sender_id, receiver_id],
   );
   const chatId = Number(root.rows[0].chat_id || routeId);
   await pool.query(
@@ -1178,19 +1178,19 @@ app.get("/chats/:id", async (req, res) => {
       req.session.userId,
       req.session.userId === sender_id ? receiver_id : sender_id,
       listing_id,
-    ]
+    ],
   );
   const messages = await pool.query(
     `SELECT m.*, COALESCE(u.display_name, u.username) as sender_username
      FROM messages m JOIN users u ON m.sender_id = u.id
      WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1)) AND m.listing_id = $3
      ORDER BY m.timestamp ASC`,
-    [sender_id, receiver_id, listing_id]
+    [sender_id, receiver_id, listing_id],
   );
   const other_id = req.session.userId === sender_id ? receiver_id : sender_id;
   const otherUser = await pool.query(
     "SELECT COALESCE(display_name, username) AS name FROM users WHERE id = $1",
-    [other_id]
+    [other_id],
   );
   const listing = await pool.query("SELECT title FROM listings WHERE id = $1", [
     listing_id,
@@ -1224,7 +1224,7 @@ app.post("/chats/:id/send", async (req, res) => {
   let to = req.session.userId === sender_id ? receiver_id : sender_id;
   await pool.query(
     `INSERT INTO messages (sender_id, receiver_id, listing_id, text, is_read) VALUES ($1, $2, $3, $4, false)`,
-    [req.session.userId, to, listing_id, text]
+    [req.session.userId, to, listing_id, text],
   );
   notifyUser(io, to, { title: "Новое сообщение", body: text });
   emailUser(to, "Новое сообщение", text);
@@ -1244,14 +1244,14 @@ app.post("/reviews", async (req, res) => {
   }
   const exists = await pool.query(
     "SELECT 1 FROM reviews WHERE listing_id = $1 AND user_id = $2",
-    [listing_id, req.session.userId]
+    [listing_id, req.session.userId],
   );
   if (exists.rows.length) {
     return res.send("Вы уже оставили отзыв на это объявление.");
   }
   await pool.query(
     "INSERT INTO reviews (listing_id, user_id, rating, text) VALUES ($1, $2, $3, $4)",
-    [listing_id, req.session.userId, rating, text]
+    [listing_id, req.session.userId, rating, text],
   );
   // уведомляем владельца объявления
   const ownerId = listing.rows[0].owner_id;
@@ -1273,7 +1273,7 @@ app.get("/favorites", async (req, res) => {
      JOIN users u ON l.owner_id = u.id
      WHERE f.user_id = $1
      ORDER BY f.id DESC`,
-    [req.session.userId]
+    [req.session.userId],
   );
   res.render("favorites", {
     user: {
@@ -1293,18 +1293,18 @@ app.post("/favorites/toggle", async (req, res) => {
   // есть ли запись?
   const ex = await pool.query(
     "SELECT 1 FROM favorites WHERE user_id = $1 AND listing_id = $2",
-    [req.session.userId, listing_id]
+    [req.session.userId, listing_id],
   );
   if (ex.rows.length) {
     await pool.query(
       "DELETE FROM favorites WHERE user_id = $1 AND listing_id = $2",
-      [req.session.userId, listing_id]
+      [req.session.userId, listing_id],
     );
   } else {
     try {
       await pool.query(
         "INSERT INTO favorites (user_id, listing_id) VALUES ($1, $2)",
-        [req.session.userId, listing_id]
+        [req.session.userId, listing_id],
       );
     } catch (e) {
       // ignore unique errors
@@ -1325,7 +1325,7 @@ app.post("/bookings/create", async (req, res) => {
   try {
     const listingRes = await pool.query(
       "SELECT owner_id FROM listings WHERE id = $1",
-      [listing_id]
+      [listing_id],
     );
     if (!listingRes.rows.length) return res.send("Объявление не найдено");
     const ownerId = listingRes.rows[0].owner_id;
@@ -1348,7 +1348,7 @@ app.post("/bookings/create", async (req, res) => {
     await pool.query(
       `INSERT INTO bookings (listing_id, tenant_id, start_date, end_date, status)
        VALUES ($1, $2, $3, $4, 'pending')`,
-      [listing_id, req.session.userId, start, end]
+      [listing_id, req.session.userId, start, end],
     );
 
     // Проверим, есть ли пересекающиеся подтверждённые брони — добавим пометку в уведомлении
@@ -1359,16 +1359,16 @@ app.post("/bookings/create", async (req, res) => {
        WHERE b.listing_id = $1 AND b.status = 'approved'
          AND NOT (b.end_date < $2 OR b.start_date > $3)
        LIMIT 1`,
-      [listing_id, start, end]
+      [listing_id, start, end],
     );
 
     let body = "У вас новый запрос на бронирование";
     if (overlapApproved.rows.length) {
       const o = overlapApproved.rows[0];
       body += ` — Внимание: даты пересекаются с подтверждённой бронью (${new Date(
-        o.start_date
+        o.start_date,
       ).toLocaleDateString("ru-RU")} — ${new Date(
-        o.end_date
+        o.end_date,
       ).toLocaleDateString("ru-RU")}, пользователь ${o.username})`;
     }
 
@@ -1424,7 +1424,7 @@ app.get("/my-bookings", async (req, res) => {
      ${where}
      ${orderClause}
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-    dataParams
+    dataParams,
   );
 
   res.render("my_bookings", {
@@ -1498,7 +1498,7 @@ app.get("/orders", async (req, res) => {
        WHERE b2.listing_id = $1 AND b2.status = 'approved' AND b2.id <> $2
          AND NOT (b2.end_date < $3 OR b2.start_date > $4)
        LIMIT 1`,
-      [b.listing_id, b.id, b.start_date, b.end_date]
+      [b.listing_id, b.id, b.start_date, b.end_date],
     );
     b.overlaps_approved = ov.rows.length > 0;
     b.overlap = ov.rows[0] || null;
@@ -1527,7 +1527,7 @@ app.post("/bookings/:id/approve", async (req, res) => {
   // проверим, что владелец
   const row = await pool.query(
     `SELECT b.*, l.owner_id FROM bookings b JOIN listings l ON b.listing_id = l.id WHERE b.id = $1`,
-    [id]
+    [id],
   );
   if (!row.rows.length) return res.send("Бронь не найдена");
   const b = row.rows[0];
@@ -1539,7 +1539,7 @@ app.post("/bookings/:id/approve", async (req, res) => {
      WHERE listing_id = $1 AND id <> $2 AND status = 'approved'
        AND NOT (end_date < $3 OR start_date > $4)
      LIMIT 1`,
-    [b.listing_id, b.id, b.start_date, b.end_date]
+    [b.listing_id, b.id, b.start_date, b.end_date],
   );
   if (overlaps.rows.length) {
     // Есть пересекающаяся подтверждённая бронь.
@@ -1554,29 +1554,29 @@ app.post("/bookings/:id/approve", async (req, res) => {
     const conflicting = await pool.query(
       `SELECT b2.* FROM bookings b2 WHERE b2.listing_id = $1 AND b2.status = 'approved'
          AND NOT (b2.end_date < $2 OR b2.start_date > $3)`,
-      [b.listing_id, b.start_date, b.end_date]
+      [b.listing_id, b.start_date, b.end_date],
     );
     for (const c of conflicting.rows) {
       await pool.query(
         `UPDATE bookings SET status = 'rejected' WHERE id = $1`,
-        [c.id]
+        [c.id],
       );
       notifyUser(io, c.tenant_id, {
         title: "Бронь отменена",
         body: `Ваша ранее подтверждённая бронь на даты ${new Date(
-          c.start_date
+          c.start_date,
         ).toLocaleDateString("ru-RU")} - ${new Date(
-          c.end_date
+          c.end_date,
         ).toLocaleDateString("ru-RU")} была отменена владельцем.`,
       });
       emailUser(
         c.tenant_id,
         "Бронь отменена",
         `Ваша ранее подтверждённая бронь на даты ${new Date(
-          c.start_date
+          c.start_date,
         ).toLocaleDateString("ru-RU")} - ${new Date(
-          c.end_date
-        ).toLocaleDateString("ru-RU")} была отменена владельцем.`
+          c.end_date,
+        ).toLocaleDateString("ru-RU")} была отменена владельцем.`,
       );
     }
   }
@@ -1597,7 +1597,7 @@ app.post("/bookings/:id/reject", async (req, res) => {
   const id = req.params.id;
   const row = await pool.query(
     `SELECT b.*, l.owner_id FROM bookings b JOIN listings l ON b.listing_id = l.id WHERE b.id = $1`,
-    [id]
+    [id],
   );
   if (!row.rows.length) return res.send("Бронь не найдена");
   const b = row.rows[0];
@@ -1633,14 +1633,14 @@ io.on("connection", (socket) => {
       if (!chatId || !text || !senderId) return;
       const firstMsg = await pool.query(
         "SELECT * FROM messages WHERE id = $1",
-        [chatId]
+        [chatId],
       );
       if (!firstMsg.rows.length) return;
       const { listing_id, sender_id, receiver_id } = firstMsg.rows[0];
       const to = senderId === sender_id ? receiver_id : sender_id;
       await pool.query(
         `INSERT INTO messages (sender_id, receiver_id, listing_id, text, is_read) VALUES ($1, $2, $3, $4, false)`,
-        [senderId, to, listing_id, text]
+        [senderId, to, listing_id, text],
       );
       const payload = {
         senderId,
@@ -1664,7 +1664,7 @@ io.on("connection", (socket) => {
     if (!userId || !data.listingId || !data.text) return;
     await pool.query(
       `INSERT INTO messages (sender_id, receiver_id, listing_id, text) VALUES ($1, NULL, $2, $3)`,
-      [userId, data.listingId, data.text]
+      [userId, data.listingId, data.text],
     );
     io.to(`listing_${data.listingId}`).emit("listing message", {
       listingId: data.listingId,
