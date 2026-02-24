@@ -74,3 +74,24 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// Форматирование чисел с пробелами: 48000 -> 48 000
+function formatNumberWithSpaces(v) {
+  if (v === null || v === undefined) return "—";
+  const n = Number(v);
+  if (Number.isNaN(n)) return v;
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+// Автоформатирование всех элементов с data-price
+document.addEventListener("DOMContentLoaded", function () {
+  try {
+    document.querySelectorAll("[data-price]").forEach(function (el) {
+      const v = el.getAttribute("data-price");
+      if (v !== null && v !== undefined)
+        el.textContent = formatNumberWithSpaces(v);
+    });
+  } catch (e) {
+    console.error("auto-format prices error", e);
+  }
+});

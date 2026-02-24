@@ -351,7 +351,7 @@ app.get("/", async (req, res) => {
   const hasMore = listings.rows.length < totalCount;
 
   // Для карты загружаем ВСЕ объявления (без LIMIT)
-  let mapSql = `SELECT l.id, l.title, l.lat, l.lng, l.photo, l.price FROM listings l JOIN users u ON l.owner_id = u.id`;
+  let mapSql = `SELECT l.id, l.title, l.lat, l.lng, l.photo, l.price, l.address FROM listings l JOIN users u ON l.owner_id = u.id`;
   if (where.length > 0) {
     mapSql += " WHERE " + where.join(" AND ");
   }

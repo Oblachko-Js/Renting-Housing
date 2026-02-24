@@ -349,11 +349,15 @@
                       const seasonNames = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' };
                       for (const s of Object.keys(data.seasons)) {
                         const name = seasonNames[s] || (s.charAt(0).toUpperCase()+s.slice(1));
-                        html += `<li>${name}: ${data.seasons[s]} руб./мес.</li>`;
+                        const val = (typeof formatNumberWithSpaces === 'function') ? formatNumberWithSpaces(data.seasons[s]) : data.seasons[s];
+                        html += `<li>${name}: ${val} руб./мес.</li>`;
                       }
                     }
                     html += '</ul>';
-                    if (data.recommended) html += `<div style="margin-top:6px;">Рекомендованная цена: <strong>${data.recommended} руб./мес.</strong></div>`;
+                    if (data.recommended) {
+                      const recVal = (typeof formatNumberWithSpaces === 'function') ? formatNumberWithSpaces(data.recommended) : data.recommended;
+                      html += `<div style="margin-top:6px;">Рекомендованная цена: <strong>${recVal} руб./мес.</strong></div>`;
+                    }
                   }
                   const rp_el = document.getElementById('recommended-price');
                   if (rp_el) { rp_el.innerHTML = html; rp_el.removeAttribute('data-info'); }
@@ -835,5 +839,7 @@
     showPreviews();
   })();
 </script>
+</script>
+<script src="/js/main.js"></script>
 </body>
 </html>

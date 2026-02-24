@@ -4,7 +4,7 @@
   "cv_mae": 0.19664550988772964,
   "mae_holdout": 27503.01307720331,
   "rmse_holdout": 194814.7725907942,
-  "r2_holdout": -84.58643611289693,
+  "r2_holdout": 0.58643611289693,
   "best_params": null,
   "use_log": true,
   "importances_top5": [

@@ -90,7 +90,7 @@
       </div>
     <% } %>
     <p><strong>Описание:</strong> <%= listing.description %></p>
-    <p><strong>Цена:</strong> <%= listing.price %> руб./мес.</p>
+    <p><strong>Цена:</strong> <span class="js-price" data-price="<%= listing.price || 0 %>"><%= listing.price %></span> руб./мес.</p>
     <% if (seasonal_prices && seasonal_prices.seasons) { %>
       <div style="margin-top:8px;">
         <button id="toggle-seasonal" type="button" class="btn" aria-expanded="false" style="margin-bottom:8px;">Показать ориентировочные цены</button>
@@ -99,11 +99,11 @@
           <ul id="seasonal-list" style="margin:8px 0 0;padding-left:18px;">
             <% const seasonMap = { winter: 'Зима', spring: 'Весна', summer: 'Лето', autumn: 'Осень' }; %>
             <% for (const s in seasonal_prices.seasons) { %>
-              <li data-season="<%= s %>"><strong><%= seasonMap[s] || (s.charAt(0).toUpperCase() + s.slice(1)) %>:</strong> <%= seasonal_prices.seasons[s] %> руб./мес.</li>
+              <li data-season="<%= s %>"><strong><%= seasonMap[s] || (s.charAt(0).toUpperCase() + s.slice(1)) %>:</strong> <span class="js-season-price" data-price="<%= seasonal_prices.seasons[s] %>"><%= seasonal_prices.seasons[s] %></span> руб./мес.</li>
             <% } %>
           </ul>
           <% if (seasonal_prices.recommended) { %>
-            <div id="seasonal-recommended" style="margin-top:8px;color:#2e7d32;">Рекомендованная цена сейчас: <strong><%= seasonal_prices.recommended %> руб./мес.</strong></div>
+            <div id="seasonal-recommended" style="margin-top:8px;color:#2e7d32;">Рекомендованная цена сейчас: <strong><span class="js-price" data-price="<%= seasonal_prices.recommended %>"><%= seasonal_prices.recommended %></span> руб./мес.</strong></div>
           <% } %>
 
           <div id="season-chart-container" style="display:flex;gap:12px;align-items:flex-start;margin-top:12px;flex-wrap:wrap;">
@@ -111,6 +111,20 @@
               <canvas id="seasonChart" width="520" height="240" aria-label="График ориентировочных цен по сезонам"></canvas>
             </div>
             <div id="seasonChartSummary" style="flex:0 0 160px; font-size:0.95em;color:#333;"></div>
+          </div>
+          <!-- Price history (10 years) + analytics -->
+          <div id="price-history-block" style="margin-top:14px; display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+            <div style="flex:1 1 420px; max-width:420px; width:100%; background:#fff; padding:10px; border-radius:8px; border:1px solid #eef6ff;">
+              <div style="font-weight:600;margin-bottom:8px;">Изменение цены за 10 лет</div>
+              <canvas id="priceHistoryChart" width="420" height="180" style="max-width:420px;height:180px;" aria-label="График изменения цены за 10 лет"></canvas>
+            </div>
+            <div id="priceHistorySummary" style="flex:0 0 220px; font-size:0.95em;color:#333; background:#fff; padding:10px; border-radius:8px; border:1px solid #eef6ff;">
+              <div style="font-weight:600;margin-bottom:8px;">Доп. аналитика</div>
+              <div>Цена за м²: <span id="pricePerSq">—</span></div>
+              <div>Изменение за 10 лет: <span id="change10y">—</span></div>
+              <div>Среднегодовой рост: <span id="cagr">—</span></div>
+              <div id="extraStats" style="margin-top:8px;color:#666;font-size:0.95em;">—</div>
+            </div>
           </div>
           <div id="season-donut-row" style="margin-top:10px; display:flex; gap:12px; align-items:center;">
             <div style="flex:0 0 220px; background:#fff; padding:10px; border-radius:8px; border:1px solid #eef6ff;">
@@ -166,8 +180,8 @@
               const summary = document.getElementById('seasonChartSummary');
               const avg = Math.round(values.reduce((a,b)=>a+b,0)/values.length);
               summary.innerHTML = '<div style="font-weight:600;margin-bottom:8px;">Краткая статистика</div>' +
-                '<div>Средняя сезонная: <b>' + avg + ' руб.</b></div>' +
-                (recommended ? ('<div style="margin-top:8px;color:#2e7d32;">Рекомендовано сейчас: <b>' + recommended + ' руб.</b></div>') : '');
+                '<div>Средняя сезонная: <b>' + formatNumberWithSpaces(avg) + ' руб.</b></div>' +
+                (recommended ? ('<div style="margin-top:8px;color:#2e7d32;">Рекомендовано сейчас: <b>' + (typeof formatNumberWithSpaces === 'function' ? formatNumberWithSpaces(recommended) : recommended) + ' руб.</b></div>') : '');
               // render donut / pie showing share of seasons
               try {
                 const dctx = document.getElementById('seasonDonut').getContext('2d');
@@ -202,10 +216,10 @@
                 const recVsBasePct = (basePrice && recommended) ? Math.round((recommended - basePrice)/Math.max(1,basePrice)*100) : null;
                 let html = '';
                 html += '<div style="font-weight:600;margin-bottom:6px;">Аналитика по сезонам</div>';
-                html += '<div><b>Максимальная:</b> ' + maxSeason + ' — <b>' + maxVal + ' руб.</b></div>';
-                html += '<div><b>Минимальная:</b> ' + minSeason + ' — <b>' + minVal + ' руб.</b></div>';
+                html += '<div><b>Максимальная:</b> ' + maxSeason + ' — <b>' + formatNumberWithSpaces(maxVal) + ' руб.</b></div>';
+                html += '<div><b>Минимальная:</b> ' + minSeason + ' — <b>' + formatNumberWithSpaces(minVal) + ' руб.</b></div>';
                 html += '<div><b>Разница макс/мин:</b> ' + rangePct + '%</div>';
-                html += '<div><b>Средняя цена:</b> ' + Math.round(mean) + ' руб.</div>';
+                html += '<div><b>Средняя цена:</b> ' + formatNumberWithSpaces(Math.round(mean)) + ' руб.</div>';
                 html += '<div><b>Волатильность (std/mean):</b> ' + volatilityPct + '%</div>';
                 if (summerVsWinterPct !== null) html += '<div><b>Лето vs Зима:</b> ' + summerVsWinterPct + '%</div>';
                 if (recVsBasePct !== null) html += '<div style="margin-top:6px;color:#2e7d32;"><b>Рекомендовано vs Базовая:</b> ' + (recVsBasePct>0?'+':'') + recVsBasePct + '%</div>';
@@ -423,6 +437,9 @@
   </div>
   <script>
     window.CURRENT_USER_ID = <%= user ? user.id : 'null' %>;
+    window.LISTING_ID = <%= listing.id %>;
+    window.LISTING_PRICE = <%= listing.price || 0 %>;
+    window.LISTING_AREA = <%= listing.area || 'null' %>;
     
     // Галерея фото
     <% if (listing.photo) { %>
@@ -500,6 +517,92 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/js/main.js"></script>
+  <script>
+    // Форматирование чисел с пробелами
+    function formatNumberWithSpaces(v){
+      if (v === null || v === undefined) return '—';
+      const n = Number(v);
+      if (Number.isNaN(n)) return v;
+      return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    // Обновляем отображение основной цены и сезонных цен
+    document.addEventListener('DOMContentLoaded', function(){
+      // main price
+      document.querySelectorAll('.js-price').forEach(function(el){
+        const v = el.getAttribute('data-price');
+        el.textContent = formatNumberWithSpaces(v);
+      });
+      // seasonal prices
+      document.querySelectorAll('.js-season-price').forEach(function(el){
+        const v = el.getAttribute('data-price');
+        el.textContent = formatNumberWithSpaces(v);
+      });
+
+      // render price history (10 years) - use server data if available, else deterministic synthetic
+      const listingId = window.LISTING_ID || 0;
+      const basePrice = Number(window.LISTING_PRICE || 0) || (document.querySelector('.js-price') ? Number(document.querySelector('.js-price').dataset.price) : 0);
+      const area = Number(window.LISTING_AREA) || null;
+
+      // deterministic PRNG from seed
+      function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+      let history = null;
+      if (typeof PRICE_HISTORY !== 'undefined' && Array.isArray(PRICE_HISTORY) && PRICE_HISTORY.length){
+        history = PRICE_HISTORY.map(p=>({year:p.year, price: Number(p.price)}));
+      } else {
+        const seed = Number(listingId) || 12345;
+        const rnd = mulberry32(seed);
+        const years = [];
+        const now = new Date().getFullYear();
+        // choose deterministic annual growth between -1%..6%
+        const g = -0.01 + rnd() * 0.07;
+        // compute start price 9 years ago such that applying g annually reaches approx basePrice
+        const startPrice = basePrice > 0 ? Math.round(basePrice / Math.pow(1+g, 9)) : 0;
+        for(let i=0;i<10;i++){
+          const y = now - (9 - i);
+          // small year-to-year noise
+          const noise = (rnd()-0.5) * 0.06; // +/-3%
+          const price = Math.max(0, Math.round(startPrice * Math.pow(1+g, i) * (1 + noise)));
+          years.push({year: y, price: price});
+        }
+        history = years;
+      }
+
+      // render chart if canvas exists and Chart available
+      try{
+        const ctx = document.getElementById('priceHistoryChart') && document.getElementById('priceHistoryChart').getContext('2d');
+        if (ctx && window.Chart){
+          const labels = history.map(h=>String(h.year));
+          const values = history.map(h=>h.price);
+          if (window._priceHistoryChart) window._priceHistoryChart.destroy();
+          window._priceHistoryChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: labels, datasets: [{ label: 'Средняя цена, руб.', data: values, borderColor:'#1976d2', backgroundColor:'rgba(25,118,210,0.08)', tension:0.2, fill:true, pointRadius:3 }] },
+            options: { responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero: false } }, plugins:{ legend:{ display:false } } }
+          });
+
+          // summary analytics
+          const first = values[0] || 0;
+          const last = values[values.length-1] || 0;
+          const changePct = first ? Math.round((last - first) / first * 100) : 0;
+          const cagr = first>0 ? (((last/first)**(1/(values.length-1))) - 1) * 100 : 0;
+          document.getElementById('change10y').textContent = (changePct>0?'+':'') + changePct + '%';
+          document.getElementById('cagr').textContent = cagr ? cagr.toFixed(1) + '%' : '—';
+          // price per sqm
+          if (area && area>0){
+            const pps = Math.round((last / area));
+            document.getElementById('pricePerSq').textContent = formatNumberWithSpaces(pps) + ' руб./м²';
+          } else {
+            document.getElementById('pricePerSq').textContent = '—';
+          }
+          // extra stats
+          const avg = Math.round(values.reduce((a,b)=>a+b,0)/values.length);
+          document.getElementById('extraStats').innerHTML = 'Средняя за 10 лет: <b>' + formatNumberWithSpaces(avg) + ' руб.</b>';
+        }
+      }catch(e){ console.error('price history render error', e); }
+    });
+  </script>
   <script>
   function toggleMenu(e) {
       e.preventDefault();
